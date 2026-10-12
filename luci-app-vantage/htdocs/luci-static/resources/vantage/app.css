@@ -63,10 +63,6 @@
 	--vt-b6: var(--vt-chart-4);
 	--vt-b60: var(--vt-text-2);
 	--vt-series-up: var(--vt-chart-1);
-	/* throughput directions: download keeps the uplink colour, upload
-	   takes one that no band uses */
-	--vt-dir-dn: var(--vt-chart-1);
-	--vt-dir-up: var(--vt-chart-5);
 	--vt-mem: var(--vt-info);
 	--vt-hover: color-mix(in srgb, var(--vt-surface-2) 70%, var(--vt-surface-3));
 	--vt-av-l: 92%;
@@ -281,80 +277,40 @@ html[data-darkmode="true"] .vt-app {
 
 /* ------------------------------------------------------------ 3. layout */
 
-/* Tiles are placed by the view (vantage/layout.js): it sets each tile's
-   column (--c), width in columns (--w) and top (--y), and the grid's
-   column count (--cols) and height. Widths and columns follow the grid
-   width here, so only heights wait for script. */
-.vt-app .vt-grid { --vt-gap: 14px; --cols: 1; position: relative; min-height: 200px; }
-.vt-app .vt-grid-wait { visibility: hidden; }
-.vt-app .vt-grid > .vt-cell, .vt-app .vt-grid > .vt-drop-ghost {
-	--c: 0; --w: 1; --y: 0px; --vt-cw: calc((100% - (var(--cols) - 1) * var(--vt-gap)) / var(--cols));
-	position: absolute; top: var(--y); box-sizing: border-box; min-width: 0;
-	left: calc(var(--vt-cw) * var(--c) + var(--vt-gap) * var(--c));
-	width: calc(var(--vt-cw) * var(--w) + var(--vt-gap) * (var(--w) - 1));
+.vt-app .vt-grid {
+	display: grid;
+	gap: 14px;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-areas: "clients" "talk" "radios" "hero" "ssids" "chart" "sys";
 }
-.vt-app .vt-cell-off { display: none !important; }
-.vt-app .vt-drop-ghost { display: none; border: 2px dashed var(--vt-accent-line); border-radius: var(--vt-r-lg); background: var(--vt-accent-soft); }
-.vt-app .vt-drop-ghost.vt-on { display: block; }
-
-/* ----------------------------------------------- 3b. arranging the tiles */
-
-.vt-app .vt-layout-btn { flex: none; height: 30px; gap: 6px; font-size: 12px; }
-.vt-app .vt-layout-btn .vt-ico { width: 16px; height: 16px; }
-.vt-app .vt-layout-btn[aria-pressed="true"] { background: var(--vt-accent-soft); color: var(--vt-text); }
-@container vt (max-width: 699px) { .vt-app .vt-layout-btn span { display: none; } }
-
-.vt-app .vt-editbar {
-	position: sticky; top: calc(var(--v-stick-top, 48px) + 8px); z-index: 6;
-	display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
-	margin: 0 0 14px; padding: 12px 14px; border-radius: var(--vt-r-lg);
-	border: 1px solid var(--vt-accent-line); background: var(--vt-surface); box-shadow: var(--vt-shadow);
-}
-.vt-app .vt-editbar[hidden] { display: none; }
-.vt-app .vt-editbar-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 260px; min-width: 0; }
-.vt-app .vt-editbar-text strong { font-size: 13px; font-weight: 650; }
-.vt-app .vt-edit-hidden { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.vt-app .vt-edit-hidden:empty { display: none; }
-.vt-app .vt-edit-hidden .vt-fchip .vt-ico { width: 13px; height: 13px; }
-.vt-app .vt-editbar-actions { display: flex; gap: 8px; margin-left: auto; }
+.vt-app .vt-hero { grid-area: hero; }
+.vt-app .vt-sys { grid-area: sys; }
+.vt-app .vt-chart { grid-area: chart; }
+.vt-app .vt-radios { grid-area: radios; }
+.vt-app .vt-clients { grid-area: clients; }
+.vt-app .vt-side { grid-area: side; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* phones: the side column dissolves so Top talkers can follow Clients */
 @container vt (max-width: 699px) {
-	.vt-app .vt-editbar { padding: 8px 8px 8px 12px; gap: 8px; }
-	.vt-app .vt-editbar-text { flex-basis: 0; }
-	.vt-app .vt-editbar-text .vt-hint { display: none; }
+	.vt-app .vt-side { display: contents; }
+	.vt-app .vt-talk { grid-area: talk; }
+	.vt-app .vt-ssid-tile { grid-area: ssids; }
 }
 
-.vt-app .vt-ov { display: none; }
-.vt-app.vt-editing .vt-ov {
-	display: block; position: absolute; inset: 0; z-index: 4;
-	border: 2px dashed var(--vt-accent-line); border-radius: var(--vt-r-lg);
-	background: color-mix(in oklab, var(--vt-surface) 55%, transparent);
+@container vt (min-width: 700px) {
+	.vt-app .vt-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		grid-template-areas: "hero hero" "radios radios" "clients clients" "chart chart" "sys side";
+	}
 }
-.vt-app .vt-ov-bar {
-	display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px;
-	margin: 8px; padding: 6px; border-radius: var(--vt-r-sm);
-	background: var(--vt-surface); border: 1px solid var(--vt-line-2); box-shadow: var(--vt-shadow);
+@container vt (min-width: 1100px) {
+	.vt-app .vt-grid {
+		grid-template-columns: repeat(4, minmax(0, 1fr));
+		grid-template-areas:
+			"hero hero hero sys"
+			"chart chart radios radios"
+			"clients clients clients side";
+	}
 }
-.vt-app .vt-ov-name { flex: 1 1 auto; min-width: 0; font-weight: 650; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vt-app .vt-ov-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
-.vt-app .vt-ov-grip, .vt-app .vt-ov-btn {
-	display: inline-flex; align-items: center; justify-content: center; flex: none;
-	width: 30px; height: 30px; min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 8px;
-	background: transparent; color: var(--vt-text-2); box-shadow: none; cursor: pointer;
-}
-.vt-app .vt-ov-grip { cursor: grab; touch-action: none; background: var(--vt-surface-3); color: var(--vt-text); }
-.vt-app .vt-ov-btn:hover:not([disabled]), .vt-app .vt-ov-grip:hover { background: var(--vt-surface-3); color: var(--vt-text); }
-.vt-app .vt-ov-btn[disabled] { opacity: .3; cursor: default; }
-.vt-app .vt-ov-btn .vt-ico, .vt-app .vt-ov-grip .vt-ico { width: 16px; height: 16px; }
-.vt-app .vt-ov-grip .vt-ico { stroke-width: 3.2; }
-.vt-app .vt-ov-flip .vt-ico { transform: scaleX(-1); }
-.vt-app .vt-ov-hide { margin-left: 4px; }
-.vt-app .vt-ov-size { min-width: 26px; text-align: center; font-size: 11.5px; font-weight: 650; color: var(--vt-text-2); }
-.vt-app.vt-edit-1col .vt-ov-col { display: none; }
-
-.vt-app.vt-editing .vt-cell { transition: top .2s ease, left .2s ease; }
-.vt-app .vt-cell.vt-dragging { z-index: 8; transition: none; opacity: .92; box-shadow: 0 18px 40px rgba(0, 0, 0, .28); }
-.vt-app .vt-dragging .vt-ov-grip { cursor: grabbing; }
-.vt-app.vt-drag-on { user-select: none; -webkit-user-select: none; }
 
 .vt-app .vt-tile {
 	position: relative;
@@ -432,6 +388,13 @@ html[data-darkmode="true"] .vt-app {
 	display: flex; align-items: center; gap: 14px;
 	margin: 2px 0 14px;
 }
+header::after {
+	height:0 !important;
+	
+}
+h2, h3{
+	background-color:transparent;
+}
 .vt-app .vt-orb {
 	position: relative; flex: none;
 	width: 38px; height: 38px; border-radius: 50%;
@@ -473,9 +436,6 @@ html[data-darkmode="true"] .vt-app {
 }
 @container vt (min-width: 700px) { .vt-app .vt-health { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @container vt (min-width: 1100px) { .vt-app .vt-health { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
-/* wired-only: four checks */
-@container vt (min-width: 700px) { .vt-app.vt-wired .vt-health { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container vt (min-width: 1100px) { .vt-app.vt-wired .vt-health { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .vt-app .vt-chip {
 	display: flex; align-items: flex-start; gap: 10px; min-width: 0;
 	padding: 11px 12px; border-radius: var(--vt-r);
@@ -585,7 +545,6 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-node-ap .vt-node-title { font-size: 14.5px; }
 .vt-app .vt-node-gen { text-transform: none; letter-spacing: 0; font-weight: 560; }
 .vt-app .vt-node-radio { padding: 8px 11px; }
-.vt-app .vt-node-net, .vt-app .vt-node-net:hover { text-decoration: none; color: var(--vt-text); }
 .vt-app .vt-node-ssid { padding: 7px 10px; }
 .vt-app .vt-node-ssid .vt-node-title { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .vt-app .vt-node-ssid .vt-node-title .vt-ico { color: var(--vt-text-3); }
@@ -641,12 +600,10 @@ html[data-darkmode="true"] .vt-app {
 
 /* ------------------------------------------------------------ 6. system */
 
-.vt-app .vt-sys { container: vtsys / inline-size; display: flex; flex-direction: column; gap: 16px; }
+.vt-app .vt-sys { display: flex; flex-direction: column; gap: 16px; }
 .vt-app .vt-sys .vt-tile-head { margin-bottom: 0; }
 .vt-app .vt-sys-cpu { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: end; }
 .vt-app .vt-sys-cpu-l { display: flex; flex-direction: column; gap: 3px; }
-/* a narrow System column puts the sparkline under the load figures */
-@container vtsys (max-width: 330px) { .vt-app .vt-sys-cpu { grid-template-columns: minmax(0, 1fr); gap: 4px; } }
 .vt-app .vt-sys-cpu-r { display: flex; align-items: flex-end; gap: 10px; min-width: 0; }
 .vt-app .vt-spark-box { flex: 1; min-width: 0; padding-top: 12px; }
 .vt-app .vt-spark-box .vt-spark { height: 38px; }
@@ -695,41 +652,45 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-chart .vt-tile-title { flex-wrap: wrap; row-gap: 0; }
 .vt-app .vt-chart-sub { font-size: 12px; font-weight: 500; color: var(--vt-text-3); }
 .vt-app .vt-chart-sub::before { content: "·"; margin: 0 6px 0 0; }
-.vt-app .vt-lg-key { width: 12px; height: 3px; border-radius: 2px; background: var(--vt-sc); flex: none; }
-/* one colour per direction in every row (series, gradients, dots, keys) */
-.vt-app .vt-chart, .vt-app .vt-chart .vt-k-dn { --vt-sc: var(--vt-dir-dn); }
-.vt-app .vt-chart .vt-dir-up, .vt-app .vt-chart .vt-k-up { --vt-sc: var(--vt-dir-up); }
-.vt-app .vt-arr { font-weight: 700; }
-.vt-app .vt-arr-dn { color: color-mix(in oklab, var(--vt-dir-dn) 70%, var(--vt-text)); }
-.vt-app .vt-arr-up { color: color-mix(in oklab, var(--vt-dir-up) 70%, var(--vt-text)); }
-.vt-app .vt-dir-legend { font-size: 11.5px; gap: 4px 12px; }
+.vt-app .vt-seg-ctl { display: inline-flex; padding: 2px; gap: 2px; border-radius: 8px; background: var(--vt-surface-3); }
+.vt-app .vt-seg-btn {
+	display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px;
+	border: 0; border-radius: 6px; background: transparent; color: var(--vt-text-2);
+	font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: none; min-width: 0; text-transform: none;
+}
+.vt-app .vt-seg-btn .vt-ico { width: 13px; height: 13px; stroke-width: 2.2; }
+.vt-app .vt-seg-btn:hover { color: var(--vt-text); background: transparent; }
+.vt-app .vt-seg-btn[aria-pressed="true"] { background: var(--vt-surface); color: var(--vt-text); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
 
-.vt-app .vt-mult-wrap { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 300px; border-radius: var(--vt-r-sm); outline-offset: 4px; }
-.vt-app .vt-mults { flex: 1; display: grid; grid-auto-rows: minmax(100px, 1fr); }
+.vt-app .vt-c-up { --vt-sc: var(--vt-series-up); }
+.vt-app .vt-c-2g { --vt-sc: var(--vt-b2); }
+.vt-app .vt-c-5g { --vt-sc: var(--vt-b5); }
+.vt-app .vt-c-6g { --vt-sc: var(--vt-b6); }
+.vt-app .vt-c-x { --vt-sc: var(--vt-text-3); }
+.vt-app .vt-lg-key { width: 12px; height: 3px; border-radius: 2px; background: var(--vt-sc); flex: none; }
+
+.vt-app .vt-mult-wrap { position: relative; flex: 1; display: flex; flex-direction: column; min-height: 240px; border-radius: var(--vt-r-sm); outline-offset: 4px; }
+.vt-app .vt-mults { flex: 1; display: grid; grid-auto-rows: minmax(64px, 1fr); }
 .vt-app .vt-mult {
 	display: grid; grid-template-columns: var(--vt-mh) minmax(0, 1fr); column-gap: var(--vt-mg);
 	padding: 8px 0; border-top: 1px solid var(--vt-line); min-height: 0;
 }
 .vt-app .vt-mult:first-child { border-top: 0; padding-top: 2px; }
 .vt-app .vt-mult-head { display: flex; flex-direction: column; justify-content: center; gap: 1px; min-width: 0; }
-.vt-app .vt-mult-name { font-size: 11.5px; font-weight: 600; color: var(--vt-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vt-app .vt-mult-now { display: flex; align-items: center; gap: 6px; font-size: 17px; font-weight: 700; letter-spacing: -.01em; line-height: 1.25; white-space: nowrap; }
-.vt-app .vt-mult-now b { font-weight: inherit; }
-.vt-app .vt-mult-now-up { font-size: 13px; font-weight: 650; line-height: 1.3; color: var(--vt-text-2); }
+.vt-app .vt-mult-name { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; color: var(--vt-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-app .vt-mult-now { font-size: 17px; font-weight: 700; letter-spacing: -.01em; line-height: 1.25; white-space: nowrap; }
 .vt-app .vt-mult-stats { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 11px; color: var(--vt-text-3); white-space: nowrap; }
 .vt-app .vt-mult-stats b { font-weight: 600; color: var(--vt-text-2); }
-.vt-app .vt-mult-plot { position: relative; min-height: 72px; margin: 12px 0; --vt-sc: inherit; }
+.vt-app .vt-mult-plot { position: relative; min-height: 48px; margin-top: 12px; border-bottom: 1px solid color-mix(in oklab, var(--vt-chart-axis) 40%, transparent); --vt-sc: inherit; }
 .vt-app .vt-mult-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .vt-app .vt-chart-grid { fill: none; stroke: var(--vt-chart-grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .vt-app .vt-chart-vgrid { fill: none; stroke: var(--vt-chart-grid); stroke-width: 1; stroke-dasharray: 2 4; vector-effect: non-scaling-stroke; }
 .vt-app .vt-series-line { fill: none; stroke: var(--vt-sc); stroke-width: 1.75; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 .vt-app .vt-series-area { stroke: none; }
-.vt-app .vt-chart-mid { fill: none; stroke: color-mix(in oklab, var(--vt-chart-axis) 55%, transparent); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .vt-app .vt-mult-max {
 	position: absolute; right: 0; top: -3px; transform: translateY(-100%);
 	font-size: 10.5px; line-height: 1; color: var(--vt-chart-axis); white-space: nowrap; pointer-events: none;
 }
-.vt-app .vt-mult-max-up { top: auto; bottom: -3px; transform: translateY(100%); }
 .vt-app .vt-mult-dot {
 	position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; z-index: 2;
 	background: var(--vt-sc); box-shadow: 0 0 0 2px var(--vt-surface); pointer-events: none;
@@ -742,17 +703,17 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-mult-wrap { cursor: crosshair; touch-action: pan-y; }
 .vt-app .vt-cursor { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid color-mix(in oklab, var(--vt-text) 45%, transparent); pointer-events: none; }
 .vt-app .vt-tip {
-	position: absolute; top: 4px; z-index: 4;
-	width: max-content; min-width: 180px; padding: 8px 10px 7px; border-radius: var(--vt-r);
+	position: absolute; top: 4px; z-index: 4; transform: translateX(12px);
+	min-width: 180px; padding: 8px 10px 7px; border-radius: var(--vt-r);
 	background: var(--vt-surface); border: 1px solid var(--vt-line-2);
 	box-shadow: 0 10px 28px rgba(12, 14, 17, .16), 0 2px 6px rgba(12, 14, 17, .06);
 	font-size: 12px; pointer-events: none;
 }
+.vt-app .vt-tip-left { transform: translateX(calc(-100% - 12px)); }
 .vt-app .vt-tip-time { display: flex; justify-content: space-between; gap: 12px; color: var(--vt-text-3); font-size: 11px; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid var(--vt-line); }
-.vt-app .vt-tip-link + .vt-tip-link { margin-top: 5px; }
-.vt-app .vt-tip-label { color: var(--vt-text-3); font-size: 11px; white-space: nowrap; }
-.vt-app .vt-tip-row { display: grid; grid-template-columns: 12px auto minmax(0, 1fr); align-items: center; column-gap: 8px; line-height: 1.6; color: var(--vt-text-2); }
-.vt-app .vt-tip-row b { font-weight: 700; color: var(--vt-text); white-space: nowrap; text-align: right; }
+.vt-app .vt-tip-row { display: grid; grid-template-columns: 12px auto minmax(0, 1fr); align-items: center; column-gap: 8px; line-height: 1.6; }
+.vt-app .vt-tip-row b { font-weight: 700; color: var(--vt-text); white-space: nowrap; }
+.vt-app .vt-tip-label { color: var(--vt-text-3); white-space: nowrap; text-align: right; }
 
 /* ------------------------------------------------------------ 8. radios */
 
