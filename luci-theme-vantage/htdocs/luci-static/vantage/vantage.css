@@ -778,6 +778,12 @@ a.vt-crumb:hover { color: var(--text); }
 	border-radius: var(--r-lg);
 	box-shadow: var(--v-shadow);
 	min-width: 0;
+	background-clip: padding-box;
+}
+.cbi-section > legend:first-child{
+    margin-left: 10px !important;
+    padding: 10px !important;
+    border: none !important;
 }
 /* Card padding supplies the space after the final paragraph. */
 .cbi-section > p:last-child { margin-bottom: 0; }
