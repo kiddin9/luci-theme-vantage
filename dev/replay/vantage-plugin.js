@@ -5,7 +5,9 @@
 
    Same object, methods, argument typing and replies:
      luci.vantage wireless   network.wireless status (from the recording),
-                             reduced to the fields the dashboard reads
+                             reduced to the fields the dashboard reads;
+                             without that object, the same fields from
+                             uci wireless
      luci.vantage thermal    the thermal zones of the --fixtures file
                              system (root/sys/class/thermal), read as the
                              plugin reads sysfs; none without one
@@ -141,6 +143,48 @@ function reduceWireless(status) {
 	return out;
 }
 
+/* a boolean option that is on, read as the init scripts read it
+   (config_get_bool; netifd takes '1' and 'true'), as the plugin's uci_true() */
+function uciTrue(v) {
+	return [ '1', 'on', 'true', 'yes', 'enabled' ].includes(v);
+}
+
+/* The same reply from uci wireless sections ([ { '.name', '.type', ... } ]
+   in config order; null without the config), as the plugin's
+   wireless_from_config(): enabled interfaces that name their ifname, the
+   first section per name, no run state, no txpower */
+function wirelessFromConfig(sections) {
+	const radios = new Map(), taken = new Set(), out = {};
+	const list = Array.isArray(sections) ? sections.filter(s => s && typeof s === 'object') : [];
+	for (const s of list)
+		if (s['.type'] === 'wifi-device' && /^[A-Za-z0-9_.-]{1,64}$/.test(s['.name']))
+			radios.set(s['.name'], { disabled: uciTrue(s.disabled), config: Object.assign({}, s, { txpower: null }), interfaces: [] });
+	for (const s of list) {
+		if (s['.type'] !== 'wifi-iface') continue;
+		const r = typeof s.device === 'string' ? radios.get(s.device) : null, ifname = s.ifname;
+		if (!r || uciTrue(s.disabled) || typeof ifname !== 'string' || !/^[A-Za-z0-9_.-]{1,64}$/.test(ifname) || taken.has(ifname)) continue;
+		taken.add(ifname);
+		r.interfaces.push({ ifname, section: s['.name'],
+			config: Object.assign({}, s, { network: typeof s.network === 'string' ? s.network.split(/\s+/).filter(n => n !== '') : s.network }) });
+	}
+	for (const [ name, r ] of radios) out[name] = Object.assign(reduceRadio(r), { source: 'config' });
+	return out;
+}
+
+/* reply of luci.vantage wireless: network.wireless status, or, when that
+   object is missing (status null), the wireless config */
+function wirelessReply(status, sections) {
+	return (status && typeof status === 'object' && !Array.isArray(status)) ? reduceWireless(status) : wirelessFromConfig(sections);
+}
+
+/* uci sections of one config from the store, in config order; null when
+   the config is missing */
+function storeSections(store, config) {
+	const r = store.uci('get', { config });
+	if (!(r && Array.isArray(r.result) && r.result[0] === 0)) return null;
+	return Object.values(r.result[1].values || {}).sort((a, b) => (a['.index'] ?? 0) - (b['.index'] ?? 0));
+}
+
 /* The uci work of set_alias against a minimal cursor:
      { sections(): [ { '.name', '.type', ... } ], add(type) -> sid,
        set(sid, opt, value), del(sid, opt?), commit() -> bool,
@@ -236,10 +280,13 @@ function call(store, method, args) {
 	args = (args && typeof args === 'object') ? args : {};
 	if (!Object.prototype.hasOwnProperty.call(POLICY, method)) return { result: [ METHOD_NOT_FOUND ] };
 	if (!argsOk(method, args)) return { result: [ INVALID_ARGUMENT ] };
-	if (method === 'wireless') return { result: [ 0, reduceWireless(store.data('network.wireless', 'status', {})) ] };
+	if (method === 'wireless') {
+		const status = store.data('network.wireless', 'status', {});
+		return { result: [ 0, wirelessReply(status, status == null ? storeSections(store, 'wireless') : null) ] };
+	}
 	if (method === 'thermal') return { result: [ 0, { zones: thermal(store.fixtures) } ] };
 	if (store.uciSeed) store.uciSeed(CONFIG, { main: { '.anonymous': false, '.type': 'vantage', '.name': 'main' } });
 	return { result: [ 0, setAlias(storeCursor(store), args) ] };
 }
 
-module.exports = { OBJECT, POLICY, MAX_ALIASES, NAME_MAX, ICONS, normMac, validateName, reduceWireless, thermal, setAlias, argsOk, call };
+module.exports = { OBJECT, POLICY, MAX_ALIASES, NAME_MAX, ICONS, normMac, validateName, reduceWireless, wirelessFromConfig, wirelessReply, thermal, setAlias, argsOk, call };

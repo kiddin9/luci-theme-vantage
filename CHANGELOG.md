@@ -6,6 +6,18 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
+## Unreleased
+
+- **Dashboard: Wi-Fi on firmware without netifd's wireless status** (#60,
+  [@bakaranadnan-a11y](https://github.com/bakaranadnan-a11y)). Vendor
+  drivers that bypass netifd, such as MediaTek's mtkwifi on GL.iNet
+  firmware, left the Wi-Fi section empty. The radios and networks now
+  come from the wireless configuration there, with run state from
+  iwinfo, and a configured Wi-Fi 7 (EHT) mode is shown even when the
+  driver reports Wi-Fi 6. OpenWrt's own drivers are read as before.
+- **Firmware upload: the progress bar fills its dialog** (#59,
+  [@VIKINGYFY](https://github.com/VIKINGYFY)).
+
 ## 1.0.11 - 2026-10-30
 
 - **Dashboard: the uplink in use when there are several** (#56,

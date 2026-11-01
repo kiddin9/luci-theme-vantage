@@ -320,7 +320,13 @@ text around it so it looks the same size.
   `wireless` returns `network.wireless status` reduced to the fields the
   view reads (no `key`, `sae_password`, RADIUS or 802.11r secrets, no EAP
   credentials; `encryption` only as the mode string); per-interface BSSID
-  and SSID come from `iwinfo info`. `set_alias({mac, name, icon})`
+  and SSID come from `iwinfo info`. Where there is no `network.wireless`
+  object (vendor drivers that bypass netifd, such as MediaTek's mtkwifi),
+  it reads the same fields from config `wireless` instead: enabled
+  interfaces that name their `ifname`, no run state and no `txpower`;
+  the view then takes the radio as up when iwinfo answers for one of its
+  interfaces, and trusts a configured EHT mode over iwinfo's.
+  `set_alias({mac, name, icon})`
   re-applies the view's rules on the device (unicast MAC, name of at most
   48 code points without control, bidi or invisible characters, icon from
   the fixed list), keeps one section per MAC, refuses a new name past 512,

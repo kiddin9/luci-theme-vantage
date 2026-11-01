@@ -24,10 +24,14 @@
  *   add/set/delete/commit/... method and no `uci` write list in any group;
  *   the only grant beyond reads is luci.vantage set_alias;
  * - the plugin (root/usr/share/rpcd/ucode/luci.vantage) registers exactly
- *   the luci.vantage methods the ACL grants, opens config `vantage` only,
- *   and imports nothing but uci, ubus and fs's lsdir and readfile, which
+ *   the luci.vantage methods the ACL grants, opens config `vantage`, and
+ *   only loads and walks config `wireless` (luci.vantage wireless without
+ *   netifd's network.wireless object; same reduced reply, no keys), and
+ *   imports nothing but uci, ubus and fs's lsdir and readfile, which
  *   it calls on paths under /sys/class/thermal only (luci.vantage
- *   thermal); no other file access, no process execution;
+ *   thermal); no other file access, no process execution, and no
+ *   module, cursor or connection passed on under another name; altered
+ *   copies of the plugin check that these rules catch each breach;
  * - every rpc.declare({ object, method }) in the app's JavaScript is
  *   granted, and every grant is used by a declare (no stale privilege);
  *   `session access` is the only call left to the platform (rpcd grants it
@@ -209,7 +213,7 @@ test('no uci write grant anywhere; the only non-read grant is the plugin\'s set_
 	assert.deepEqual(extra, [ 'luci.vantage set_alias' ]);
 });
 
-test('the plugin registers exactly the granted luci.vantage methods and touches config vantage only', () => {
+test('the plugin registers exactly the granted luci.vantage methods, writes config vantage only, reads wireless', () => {
 	/* ubus object and methods (the file's last statement and its methods table) */
 	assert.match(plugin, /^return \{ 'luci\.vantage': methods \};\s*$/m);
 	const table = /^const methods = \{\n([\s\S]*?)\n\};$/m.exec(plugin);
@@ -224,26 +228,80 @@ test('the plugin registers exactly the granted luci.vantage methods and touches 
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' thermal'));
 	assert.ok(pairs(acl[WRITE_GROUP].write.ubus).has(PLUGIN_OBJECT + ' set_alias'));
 
-	/* imports: uci, ubus and two read-only fs functions; nothing that
-	   writes files or starts processes */
-	const imports = [ ...plugin.matchAll(/^import .* from '([^']+)';$/gm) ].map(m => m[1]).sort();
-	assert.deepEqual(imports, [ 'fs', 'ubus', 'uci' ]);
-	assert.match(plugin, /^import \{ lsdir, readfile \} from 'fs';$/m);
-	assert.doesNotMatch(plugin, /\b(system|popen|exec|require|loadfile|loadstring|include|render|writefile|unlink)\s*\(/);
+	checkPluginSource(plugin);
+});
+
+/* The plugin's source rules, in one function so that the mutation test
+   below can run them on altered copies; throws at the first breach. They
+   read the text, so the names that hold a module, cursor or connection
+   (cursor, connect, uci, wl) may appear only where listed, comments
+   included, and a reference that passes one of them on is a breach. */
+const REWORD = '; comments count too, so reword a comment that uses the word';
+function checkPluginSource(src) {
+	/* imports: exactly these lines; nothing that writes files, starts
+	   processes or reaches builtins by name, not even by reference
+	   (`let s = system`, `global[...]`, `call(...)`) */
+	assert.deepEqual([ ...src.matchAll(/^.*\bimport\b.*$/gm) ].map(m => m[0]), [
+		'import { cursor } from \'uci\';',
+		'import { connect } from \'ubus\';',
+		'import { lsdir, readfile } from \'fs\';'
+	]);
+	const word = /\b(system|popen|exec|require|loadfile|loadstring|include|render|writefile|unlink|global)\b/.exec(src);
+	assert.equal(word, null, word && `"${word[1]}" is banned in the plugin, as a word${REWORD}`);
+	assert.doesNotMatch(src, /(^|[^.\w])call\s*\(/m, 'the call() builtin is banned in the plugin');
 	/* fs: only under /sys/class/thermal */
-	assert.match(plugin, /^const THERMAL = '\/sys\/class\/thermal';$/m);
-	const fsCalls = [ ...plugin.matchAll(/\b(lsdir|readfile)\(([^,)]*)/g) ].map(m => m[1] + '(' + m[2]);
+	assert.match(src, /^const THERMAL = '\/sys\/class\/thermal';$/m);
+	const fsCalls = [ ...src.matchAll(/\b(lsdir|readfile)\(([^,)]*)/g) ].map(m => m[1] + '(' + m[2]);
 	assert.ok(fsCalls.length >= 3, 'found the fs calls');
 	for (const c of fsCalls) assert.match(c, /^(lsdir\(THERMAL$|readfile\(THERMAL \+ '\/' \+ n \+ '\/(temp|type)')$/, c);
 
-	/* uci: every cursor call names CONFIG, and CONFIG is 'vantage' */
-	assert.match(plugin, /^const CONFIG = 'vantage';$/m);
-	const calls = [ ...plugin.matchAll(/\buci\.(\w+)\(([^,)]*)/g) ];
+	/* uci: two cursors made without arguments, `uci` on CONFIG ('vantage')
+	   and `wl`, which only loads and walks WIRELESS ('wireless'); every
+	   other mention of either name is one of those calls */
+	assert.deepEqual([ ...src.matchAll(/^.*\bcursor\b.*$/gm) ].map(m => m[0].trim()), [ 'import { cursor } from \'uci\';', 'let wl = cursor();', 'let uci = cursor();' ],
+		`"cursor" may appear only on its import and the two cursor() lines${REWORD}`);
+	const body = src.replace(/^.*\bcursor\b.*$/gm, '');
+	assert.match(src, /^const CONFIG = 'vantage';$/m);
+	const calls = [ ...body.matchAll(/\buci\b(?:\.(\w+)\(([^,)]*))?/g) ];
 	assert.ok(calls.length >= 5, 'found the uci calls');
-	for (const m of calls) assert.equal(m[2], 'CONFIG', `uci.${m[1]}(${m[2]})`);
-	/* the only ubus call is network.wireless status */
-	const ubus = [ ...plugin.matchAll(/\.call\('([^']+)', '([^']+)'/g) ].map(m => m[1] + ' ' + m[2]);
-	assert.deepEqual(ubus, [ 'network.wireless status' ]);
+	for (const m of calls) assert.equal(m[2], 'CONFIG', `"${m[0]}": "uci" may appear only as uci.<method>(CONFIG, ...)${REWORD}`);
+	assert.match(src, /^const WIRELESS = 'wireless';/m);
+	assert.deepEqual([ ...body.matchAll(/\bwl\b(?:\.(\w+)\(([^,)]*))?/g) ].map(m => m[0]), [ 'wl.load(WIRELESS', 'wl.foreach(WIRELESS', 'wl.foreach(WIRELESS' ],
+		`"wl" may appear only as wl.load(WIRELESS) and two wl.foreach(WIRELESS, ...)${REWORD}`);
+	assert.equal([ ...src.matchAll(/\bWIRELESS\b/g) ].length, 4, 'WIRELESS: its definition and the three wl calls');
+
+	/* ubus: one connection for the one call, network.wireless status */
+	assert.deepEqual([ ...src.matchAll(/^.*\bconnect\b.*$/gm) ].map(m => m[0].trim()), [ 'import { connect } from \'ubus\';', 'let reply = connect()?.call(\'network.wireless\', \'status\');' ],
+		`"connect" may appear only on its import and the network.wireless status call${REWORD}`);
+	assert.equal([ ...src.matchAll(/\.\s*call\b/g) ].length, 1, 'one .call');
+}
+
+test('the plugin source rules catch writes, other configs and calls, and names passed on', () => {
+	const at = '\tlet wl = cursor();\n';
+	assert.ok(plugin.includes(at), 'insertion point');
+	const add = code => plugin.replace(at, at + '\t' + code + '\n');
+	const MUTANTS = {
+		'renamed import': add('let w = rw(); w.set(\'wireless\', \'x\', \'encryption\', \'none\'); w.commit(\'wireless\');')
+			.replace('import { cursor } from \'uci\';', 'import { cursor, cursor as rw } from \'uci\';'),
+		'second import': plugin.replace('import { connect } from \'ubus\';', 'import { connect } from \'ubus\';\nimport * as u from \'uci\';'),
+		'fs write': plugin.replace('import { lsdir, readfile } from \'fs\';', 'import { lsdir, readfile, writefile } from \'fs\';'),
+		'cursor by reference': add('let mk = cursor; mk().commit(WIRELESS);'),
+		'cursor on a directory': plugin.replace('let uci = cursor();', 'let uci = cursor(\'/etc/init.d\');'),
+		'third cursor': add('let w = cursor(); w.load(\'network\');'),
+		'write through wl': add('wl.set(WIRELESS, \'x\', \'encryption\', \'none\');'),
+		'wl by reference': add('let w2 = wl;'),
+		'uci by reference': plugin.replace('\tuci.load(CONFIG);\n', '\tuci.load(CONFIG);\n\tlet u = uci; u.set(\'wireless\', \'x\', \'encryption\', \'none\');\n'),
+		'uci on wireless': plugin.replace('\tuci.load(CONFIG);\n', '\tuci.load(WIRELESS);\n'),
+		'ubus call in double quotes': add('connect()?.call("uci", "set", {});'),
+		'ubus call on a computed object': add('let o = \'file\'; connect()?.call(o, \'write\', {});'),
+		'process by reference': add('let s = system; s(\'reboot\');'),
+		'builtin call()': add('call(print, null, null, \'x\');'),
+		'builtin by name': add('global[\'sys\' + \'tem\'](\'reboot\');')
+	};
+	for (const [ name, src ] of Object.entries(MUTANTS)) {
+		assert.notEqual(src, plugin, name + ': the mutation applies');
+		assert.throws(() => checkPluginSource(src), assert.AssertionError, name);
+	}
 });
 
 test('no wildcards except the hostapd object glob; no method globs', () => {
