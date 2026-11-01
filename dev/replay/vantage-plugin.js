@@ -33,6 +33,7 @@ const ICONS = [ 'phone', 'laptop', 'tablet', 'desktop', 'tv', 'speaker', 'printe
 const THERMAL = '/sys/class/thermal';
 const MAX_ZONES = 16;
 const MAX_HOSTS = 512;
+const MAX_PER_PORT = 128;
 /* the kernel's numbers, as rtnl.const */
 const NUD_NOARP = 0x40, NUD_PERMANENT = 0x80, NTF_SELF = 0x02;
 
@@ -180,8 +181,10 @@ function wirelessFromConfig(sections) {
 
 /* reply of luci.vantage wireless: network.wireless status, or, when that
    object is missing (status null), the wireless config */
+/* netifd's status, unless it is missing or skipped every radio (no
+   handler for the vendor's driver type): then the config */
 function wirelessReply(status, sections) {
-	return (status && typeof status === 'object' && !Array.isArray(status)) ? reduceWireless(status) : wirelessFromConfig(sections);
+	return (status && typeof status === 'object' && !Array.isArray(status) && Object.keys(status).length) ? reduceWireless(status) : wirelessFromConfig(sections);
 }
 
 /* uci sections of one config from the store, in config order; null when
@@ -267,15 +270,18 @@ function thermal(fixtures) {
 }
 
 /* wired: [ { mac, port, bridge, vlan, seen } ] from an rtnl-shaped dump
-   of the bridge forwarding database (or nothing), as the plugin's wired() */
+   of the bridge forwarding database (or nothing), as the plugin's wired():
+   at most MAX_PER_PORT a port. The replay has no crowded bridge. */
 function wired(fdb) {
-	const out = [];
+	const out = [], per = Object.create(null);
 	const netdev = v => typeof v === 'string' && /^[A-Za-z0-9_.-]{1,15}$/.test(v);
 	for (const n of Array.isArray(fdb) ? fdb : []) {
 		if (out.length >= MAX_HOSTS) break;
 		const mac = (n && typeof n === 'object' && !Array.isArray(n)) ? normMac(n.lladdr) : null;
 		if (!mac || isMulticast(mac) || !Number.isInteger(n.state) || (n.state & NUD_PERMANENT) ||
-		    (Number.isInteger(n.flags) && (n.flags & NTF_SELF)) || !netdev(n.master) || !netdev(n.dev)) continue;
+		    (Number.isInteger(n.flags) && (n.flags & NTF_SELF)) || !netdev(n.master) || !netdev(n.dev) ||
+		    (per[n.dev] || 0) >= MAX_PER_PORT) continue;
+		per[n.dev] = (per[n.dev] || 0) + 1;
 		const upd = n.cacheinfo && n.cacheinfo.updated;
 		out.push({
 			mac, port: n.dev, bridge: n.master,
@@ -309,7 +315,8 @@ function call(store, method, args) {
 	if (!argsOk(method, args)) return { result: [ INVALID_ARGUMENT ] };
 	if (method === 'wireless') {
 		const status = store.data('network.wireless', 'status', {});
-		return { result: [ 0, wirelessReply(status, status == null ? storeSections(store, 'wireless') : null) ] };
+		const empty = status && typeof status === 'object' && !Object.keys(status).length;
+		return { result: [ 0, wirelessReply(status, status == null || empty ? storeSections(store, 'wireless') : null) ] };
 	}
 	if (method === 'thermal') return { result: [ 0, { zones: thermal(store.fixtures) } ] };
 	if (method === 'wired') return { result: [ 0, { hosts: wired(store.synthetic && store.synthetic.fdb ? store.synthetic.fdb() : null) } ] };

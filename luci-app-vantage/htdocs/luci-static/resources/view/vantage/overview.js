@@ -12,6 +12,7 @@
 'require vantage.series as series';
 'require vantage.layout as layout';
 'require vantage.wires as wires';
+'require vantage.backdrop as backdrop';
 
 /* Vantage dashboard (luci-app-vantage): a live, read-only overview of the
    device, its uplink, radios, SSIDs and stations. The only write is the
@@ -36,7 +37,8 @@ var callDevs = rpc.declare({ object: 'network.device', method: 'status', expect:
    without keys or RADIUS secrets, and the validated alias write */
 var callWifi = rpc.declare({ object: 'luci.vantage', method: 'wireless', expect: { '': {} } });
 var callThermal = rpc.declare({ object: 'luci.vantage', method: 'thermal', expect: { zones: [] } });
-var callWired = rpc.declare({ object: 'luci.vantage', method: 'wired', expect: { hosts: [] } });
+/* { hosts, crowded }: crowded when a bridge holds too many entries to list */
+var callWired = rpc.declare({ object: 'luci.vantage', method: 'wired', expect: { '': {} } });
 var callHints = rpc.declare({ object: 'luci-rpc', method: 'getHostHints', expect: { '': {} } });
 var callIwInfo = rpc.declare({ object: 'iwinfo', method: 'info', params: [ 'device' ], expect: { '': {} } });
 var callAssoc = rpc.declare({ object: 'iwinfo', method: 'assoclist', params: [ 'device' ], expect: { results: [] } });
@@ -440,6 +442,23 @@ function writeChartStyle(v) {
 	} catch (e) {}
 }
 
+/* The network path's backdrop the viewer picked (backdrop.STYLES), in
+   this browser */
+var BACKDROP_KEY = 'vantage.backdrop.v1';
+
+function readBackdrop() {
+	var v = null;
+	try { v = window.localStorage.getItem(BACKDROP_KEY); } catch (e) { v = null; }
+	return backdrop.STYLES.indexOf(v) >= 0 ? v : backdrop.STYLES[0];
+}
+
+function writeBackdrop(v) {
+	try {
+		if (v === backdrop.STYLES[0]) window.localStorage.removeItem(BACKDROP_KEY);
+		else window.localStorage.setItem(BACKDROP_KEY, v);
+	} catch (e) {}
+}
+
 /* ================================================================= view */
 
 return view.extend({
@@ -487,9 +506,10 @@ return view.extend({
 			L.resolveDefault(callWifi(), null),
 			L.resolveDefault(callHints(), {}),
 			L.resolveDefault(callThermal(), []),
-			L.resolveDefault(callWired(), [])
+			L.resolveDefault(callWired(), {})
 		]).then(function(r) {
 			var wifiDevs = (r[4] && typeof r[4] === 'object') ? r[4] : null;
+			var wiredReply = (r[7] && typeof r[7] === 'object') ? r[7] : {};
 			var ifnames = [];
 			Object.keys(wifiDevs || {}).forEach(function(rn) {
 				var ifs = (wifiDevs[rn] && Array.isArray(wifiDevs[rn].interfaces)) ? wifiDevs[rn].interfaces : [];
@@ -515,7 +535,8 @@ return view.extend({
 					else if (p[0] === 'hapdStatus') hapdStatus[p[1]] = p[2];
 					else iwinfo[p[1]] = p[2];
 				});
-				return { info: r[0] || {}, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || {}, thermal: r[6] || [], fdb: r[7] || [],
+				return { info: r[0] || {}, stat: r[1] || '', ifaces: r[2] || [], devs: r[3] || {}, wifi: wifiDevs, hints: r[5] || {}, thermal: r[6] || [],
+					fdb: Array.isArray(wiredReply.hosts) ? wiredReply.hosts : [], fdbCrowded: wiredReply.crowded === true,
 					assoc: assoc, hapd: hapd, hapdStatus: hapdStatus, iwinfo: iwinfo, at: Date.now(), started: started };
 			});
 		});
@@ -557,6 +578,7 @@ return view.extend({
 		this.foldBtns = {};
 		this.layouts = readLayouts();
 		this.chartStyle = readChartStyle();
+		this.backdropStyle = readBackdrop();
 		this.editing = false;
 		this.drag = null;
 		this.applyMdns(data.mdns);
@@ -695,18 +717,19 @@ return view.extend({
 	},
 
 	/* names beyond what one poll carries: reverse DNS once per new
-	   address, mDNS every minute when present, the vendor table once */
+	   address, mDNS every minute when present, the vendor table once;
+	   for Wi-Fi clients and wired hosts alike */
 	resolveMore: function(m) {
 		var st = this.st, self = this;
-		var ips = [];
+		var ips = [], all = m.clients.concat(m.wiredHosts || []);
 		/* answers are kept for the session, but only for addresses still
 		   in use once there are many */
 		if (Object.keys(st.rdns).length > 1024) {
 			var keep = Object.create(null);
-			m.clients.forEach(function(c) { c.ips.forEach(function(ip) { if (ip in st.rdns) keep[ip] = st.rdns[ip]; }); });
+			all.forEach(function(c) { c.ips.forEach(function(ip) { if (ip in st.rdns) keep[ip] = st.rdns[ip]; }); });
 			st.rdns = keep;
 		}
-		m.clients.forEach(function(c) {
+		all.forEach(function(c) {
 			c.ips.forEach(function(ip) { if (!(ip in st.rdns) && ips.indexOf(ip) < 0 && ips.length < 64) ips.push(ip); });
 		});
 		if (ips.length && !st.rdnsBusy && !st.rdnsOff) {
@@ -729,7 +752,7 @@ return view.extend({
 			st.mdnsAt = Date.now();
 			L.resolveDefault(callMdns(), null).then(function(r) { self.applyMdns(r); });
 		}
-		var wantVendor = m.clients.some(function(c) { return c.nameSource === 'mac'; });
+		var wantVendor = all.some(function(c) { return c.nameSource === 'mac'; });
 		if (wantVendor && !st.oui && !st.ouiLoading) {
 			st.ouiLoading = true;
 			L.require('vantage.oui').then(function(mod) { st.oui = mod; self.rerender(); }).catch(function() {});
@@ -1052,6 +1075,22 @@ return view.extend({
 		return E('div', { 'class': 'vt-edit-field' }, [ E('label', { 'for': 'vt-chart-style' }, [ _('Throughput chart') ]), pick ]);
 	},
 
+	/* the network path's backdrop, picked under Customize */
+	buildBackdropPick: function() {
+		var self = this, names = { 'grid': _('Grid packets'), 'stars': _('Starfield'), 'none': _('None') };
+		var pick = E('select', { 'class': 'vt-select', 'id': 'vt-backdrop-style', 'change': function(ev) { self.setBackdrop(ev.target.value); } },
+			backdrop.STYLES.map(function(k) { return E('option', { 'value': k }, [ names[k] ]); }));
+		pick.value = this.backdropStyle;
+		return E('div', { 'class': 'vt-edit-field' }, [ E('label', { 'for': 'vt-backdrop-style' }, [ _('Network path background') ]), pick ]);
+	},
+
+	setBackdrop: function(v) {
+		if (backdrop.STYLES.indexOf(v) < 0 || v === this.backdropStyle) return;
+		this.backdropStyle = v;
+		writeBackdrop(v);
+		if (this.backdrop) this.backdrop.style(v);
+	},
+
 	setChartStyle: function(v) {
 		if (series.CHART_STYLES.indexOf(v) < 0 || v === this.chartStyle) return;
 		this.chartStyle = v;
@@ -1068,7 +1107,7 @@ return view.extend({
 		el.editBar = E('div', { 'class': 'vt-editbar', 'role': 'region', 'aria-label': _('Customize the dashboard'), 'hidden': 'hidden' }, [
 			E('div', { 'class': 'vt-editbar-text' }, [ E('strong', {}, [ _('Customize the dashboard') ]), el.editHint ]),
 			el.editHidden,
-			this.buildChartPick(),
+			E('div', { 'class': 'vt-edit-picks' }, [ this.buildChartPick(), this.buildBackdropPick() ]),
 			E('div', { 'class': 'vt-editbar-actions' }, [
 				E('button', { 'type': 'button', 'class': 'vt-btn', 'click': function() {
 					var l = self.lay;
@@ -1319,11 +1358,14 @@ return view.extend({
 		this.wireMap = Object.create(null);
 		this.hero = null;
 		el.kpis = E('div', { 'class': 'vt-kpis vt-fold-keep' });
-		return this.foldable('hero', E('section', { 'class': 'vt-tile vt-hero', 'aria-label': _('Network path') }, [
+		var tile = this.foldable('hero', E('section', { 'class': 'vt-tile vt-hero', 'aria-label': _('Network path') }, [
 			tileHead('pulse', _('Network path'), [ E('span', { 'class': 'vt-hint vt-hint-wide' }, [ _('Click any node for details') ]), this.foldButton('hero', _('Show or hide the network path')) ]),
 			el.path,
 			el.kpis
 		]));
+		/* packets or stars behind the path, moved by the uplink's rate */
+		this.backdrop = backdrop.mount(tile, el.path, this.backdropStyle);
+		return tile;
 	},
 
 	/* the nodes the path shows: rebuilt only when this changes (a radio,
@@ -1337,11 +1379,13 @@ return view.extend({
 	},
 
 	/* the ports with wired hosts downstream of this device, at most 8:
-	   hosts on the uplink's port are the way to the gateway, not clients */
+	   hosts on the uplink's port are the way to the gateway, not clients
+	   (on a bridge with several ports whose gateway port is unknown, only
+	   the gateway is left out) */
 	wiredPorts: function() {
 		var m = this.m, up = m.uplink, out = [];
 		(m.wiredHosts || []).forEach(function(c) {
-			if (up && (c.port === up.dev || c.port === up.statsDev)) return;
+			if (c.gateway || (up && up.port && c.port === up.port)) return;
 			if (out.indexOf(c.port) < 0) out.push(c.port);
 		});
 		return out.sort().slice(0, 8);
@@ -1491,6 +1535,7 @@ return view.extend({
 		txt(h.apUp, d.uptime != null ? _('up %s').format(fmt.duration(d.uptime)) : '');
 		h.upActive = !!(upR && upR.rx + upR.tx > 50e3);
 		h.upRate = upR ? upR.rx + upR.tx : 0;
+		if (this.backdrop) this.backdrop.update({ down: upR ? upR.rx : null, up: upR ? upR.tx : null, origin: h.ap });
 
 		if (m.wired) {
 			var nets = Object.create(null);
@@ -2474,6 +2519,9 @@ return view.extend({
 			dom.content(el.clientsEmpty, total ? [
 				icon('search'), E('p', { 'class': 'vt-empty-title' }, [ ui.filter ? _('No clients match “%s”').format(fmt.safeText(ui.filter, 40)) : _('No clients in this view') ]),
 				E('button', { 'type': 'button', 'class': 'vt-btn', 'click': function() { ui.chip = 'all'; self.setFilter(''); } }, [ _('Show all clients') ])
+			] : wired && this.lastRaw && this.lastRaw.fdbCrowded ? [
+				icon('router'), E('p', { 'class': 'vt-empty-title' }, [ _('Too many devices to list') ]),
+				E('p', {}, [ _('The bridges have learned so many addresses that listing them here would strain this device.') ])
 			] : wired ? [
 				icon('router'), E('p', { 'class': 'vt-empty-title' }, [ _('No wired devices heard') ]),
 				E('p', {}, [ _('Devices on the Ethernet ports appear here once they send traffic; the bridge forgets quiet ones after about five minutes.') ])
@@ -2506,7 +2554,9 @@ return view.extend({
 		var bar = E('span', { 'class': 'vt-mini-fill' });
 		setW(bar, maxRate > 0 ? total / maxRate * 100 : 0);
 		var tags = [];
+		var up = this.m && this.m.uplink;
 		if (c.gateway) tags.push(pill(_('Gateway'), 'accent', _('The router this device sends its traffic to')));
+		else if (up && up.port && c.port === up.port) tags.push(pill(_('Upstream'), 'muted', _('Reached through the uplink port %s, not connected to this device').format(c.port)));
 		if (c.vlan != null) tags.push(pill(_('VLAN %d').format(c.vlan), 'muted'));
 		var speed = c.speed ? fmt.phyRate(c.speed.mbps * 1000) : fmt.DASH;
 		var link = E('td', { 'class': 'vt-td-link', 'data-title': _('Link', 'vantage') }, [

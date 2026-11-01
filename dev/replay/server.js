@@ -23,6 +23,9 @@
    --wired serves the device as a router without Wi-Fi (wired.js): no
    radios, the uplink renamed wan, synthetic lan/vpn/guest interfaces.
 
+   --big serves the device as a larger access point (big.js): four radios,
+   ten networks, 74 stations, five wired ports with hosts behind them.
+
    --fixtures <dir> (repeatable) adds hand-written data for pages the
    recording lacks (fixtures.js): rpcd plugin stand-ins, uci configs, a small
    file system for file.read/stat/list and cgi-download, exec outputs. The
@@ -57,6 +60,7 @@ const { Fixtures } = require('./fixtures');
 const i18n = require('../i18n/catalog');
 const policy = require('./policy');
 const wired = require('./wired');
+const big = require('./big');
 
 /* ------------------------------------------------------------ arguments */
 
@@ -64,7 +68,7 @@ function parseArgs(argv) {
 	const o = { port: 8025, synthetic: true };
 	for (let i = 0; i < argv.length; i++) {
 		const m = /^--(mirror|port|theme-dir|theme|templates|rootfs|app-dir|lang|fixtures)(?:=(.*))?$/.exec(argv[i]);
-		if (!m) { if (argv[i] === '--keep-uniwrt') o.keepUniwrt = true; else if (argv[i] === '--synthetic') o.synthetic = true; else if (argv[i] === '--no-synthetic') o.synthetic = false; else if (argv[i] === '--demo') o.demo = true; else if (argv[i] === '--wired') o.wired = true; else if (argv[i] === '-h' || argv[i] === '--help') o.help = true; else o.bad = argv[i]; continue; }
+		if (!m) { if (argv[i] === '--keep-uniwrt') o.keepUniwrt = true; else if (argv[i] === '--synthetic') o.synthetic = true; else if (argv[i] === '--no-synthetic') o.synthetic = false; else if (argv[i] === '--demo') o.demo = true; else if (argv[i] === '--wired') o.wired = true; else if (argv[i] === '--big') o.big = true; else if (argv[i] === '-h' || argv[i] === '--help') o.help = true; else o.bad = argv[i]; continue; }
 		const v = (m[2] !== undefined) ? m[2] : argv[++i];
 		if (m[1] === 'app-dir') (o.appDirs = o.appDirs || []).push(v);
 		else if (m[1] === 'fixtures') (o.fixtures = o.fixtures || []).push(v);
@@ -73,12 +77,13 @@ function parseArgs(argv) {
 	return o;
 }
 
-const USAGE = 'usage: server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>] [--theme <name>] [--templates <dir>] [--rootfs <dir>] [--app-dir <pkg>]... [--keep-uniwrt] [--no-synthetic] [--demo] [--wired] [--lang <lang>] [--fixtures <dir>]...';
+const USAGE = 'usage: server.js --mirror <dir> [--port 8025] [--theme-dir <htdocs/luci-static/name>] [--theme <name>] [--templates <dir>] [--rootfs <dir>] [--app-dir <pkg>]... [--keep-uniwrt] [--no-synthetic] [--demo] [--wired | --big] [--lang <lang>] [--fixtures <dir>]...';
 const opts = parseArgs(process.argv.slice(2));
 if (opts.help || opts.bad || !opts.mirror) {
 	console.error(opts.bad ? `unknown argument ${opts.bad}\n${USAGE}` : USAGE);
 	process.exit(2);
 }
+if (opts.wired && opts.big) { console.error(`--wired and --big are two different devices\n${USAGE}`); process.exit(2); }
 function readText(file) { try { return fs.readFileSync(file, 'utf8'); } catch (e) { return ''; } }
 
 const port = parseInt(opts.port, 10);
@@ -557,7 +562,7 @@ function ubusReply(msg) {
 			return Object.assign(reply, { result: [ 0, { access: !!(args && args.scope === 'ubus' && anonAllowed(args.object, args.function)) } ] });
 	}
 	const r = store.call(object, method, args || {});
-	return Object.assign(reply, opts.wired ? wired.transform(object, method, args, r) : r);
+	return Object.assign(reply, opts.wired ? wired.transform(object, method, args, r) : opts.big ? big.transform(object, method, args, r) : r);
 }
 
 async function handleUbus(req, res) {

@@ -336,12 +336,17 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-edit-hidden:empty { display: none; }
 .vt-app .vt-edit-hidden .vt-fchip .vt-ico { width: 13px; height: 13px; }
 .vt-app .vt-editbar-actions { display: flex; gap: 8px; margin-left: auto; }
+/* the chart and network path picks wrap as one group */
+.vt-app .vt-edit-picks { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px 16px; min-width: 0; }
 .vt-app .vt-edit-field { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .vt-app .vt-edit-field label { font-size: var(--vt-fs-sm); color: var(--vt-text-2); white-space: nowrap; }
-/* narrow: the label above, the select across the bar, so a long choice
-   ("Mirrored, scale per direction") is not cut */
+/* narrow: the two picks side by side, each label above its select, so
+   the sticky bar stays short */
 @container vt (max-width: 699px) {
-	.vt-app .vt-edit-field { flex: 1 1 100%; flex-direction: column; align-items: stretch; gap: 4px; }
+	.vt-app .vt-edit-picks { flex: 1 1 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+	.vt-app .vt-edit-field { flex-direction: column; align-items: stretch; gap: 4px; }
+	.vt-app .vt-edit-field label { white-space: normal; }
+	.vt-app .vt-edit-field > .vt-select { width: 100%; min-width: 0; }
 }
 .vt-app .vt-select {
 	appearance: none; -webkit-appearance: none; min-width: 0; max-width: 100%;
@@ -614,7 +619,7 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-kpi + .vt-kpi { box-shadow: -1px 0 0 var(--vt-line); border-radius: 0 var(--vt-r-sm) var(--vt-r-sm) 0; }
 .vt-app .vt-kpi-label { font-size: var(--vt-fs-micro); font-weight: 650; color: var(--vt-text-3); text-transform: uppercase; letter-spacing: .05em; }
 .vt-app .vt-kpi-value { font-size: var(--vt-fs-xl); font-weight: 700; letter-spacing: -.02em; line-height: 1.2; white-space: nowrap; }
-.vt-app .vt-kpi-sub { font-size: var(--vt-fs-sm); color: var(--vt-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vt-app .vt-kpi-sub { max-width: 100%; font-size: var(--vt-fs-sm); color: var(--vt-text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vt-app .vt-kpi-warn .vt-kpi-value { color: var(--vt-warn); }
 @container vthero (max-width: 700px) {
 	.vt-app .vt-kpis { grid-template-columns: 1fr 1fr; }
@@ -627,6 +632,10 @@ html[data-darkmode="true"] .vt-app {
 	-webkit-mask-image: linear-gradient(180deg, rgba(0,0,0,.55), transparent 85%);
 	mask-image: linear-gradient(180deg, rgba(0,0,0,.55), transparent 85%);
 }
+/* the backdrop (vantage/backdrop.js): a canvas over the dot grid and
+   under the wires and nodes, drawing over the path's height only */
+.vt-app .vt-backdrop { position: absolute; left: 0; top: 0; pointer-events: none; border-radius: inherit; }
+.vt-app .vt-backdrop[hidden] { display: none; }
 .vt-app .vt-path {
 	position: relative;
 	display: grid;
@@ -717,7 +726,8 @@ html[data-darkmode="true"] .vt-app {
 .vt-app .vt-link-up { font-size: var(--vt-fs-sm); }
 .vt-app .vt-link-up b { font-size: var(--vt-fs-base); font-weight: 650; color: var(--vt-text-2); }
 .vt-app .vt-link-up .vt-ico { color: var(--vt-text-3); }
-.vt-app .vt-link-meta { font-size: var(--vt-fs-micro); color: var(--vt-text-3); font-family: var(--vt-mono); white-space: nowrap; margin-top: 2px; }
+.vt-app .vt-link-meta { font-size: var(--vt-fs-micro); color: var(--vt-text-3); font-family: var(--vt-mono); white-space: nowrap; margin-top: 2px;
+	padding: 0 6px; border-radius: 6px; background: var(--vt-surface); }
 
 /* the branches spread over the height the tile gets from its row, so a
    tall neighbour leaves no empty band above or below the diagram */
@@ -925,6 +935,9 @@ html[data-darkmode="true"] .vt-app {
 /* ----------------------------------------------------------- 9. clients */
 
 .vt-app .vt-clients { padding-bottom: 8px; }
+/* a jump to a tile (the path's SSID, Wired and port nodes) stops below
+   the sticky top bar */
+.vt-app .vt-tile { scroll-margin-top: calc(var(--v-stick-top, 48px) + 12px); }
 .vt-app .vt-count { font-size: var(--vt-fs-sm); color: var(--vt-text-3); font-weight: 560; }
 .vt-app .vt-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
 .vt-app .vt-filter {
@@ -962,7 +975,7 @@ html[data-darkmode="true"] .vt-app {
 /* quick filters: a button at the end of the search box, a menu under it,
    and the filter in force as a tag in the box */
 .vt-app .vt-filter-wrap { position: relative; display: flex; flex: 1 1 260px; max-width: 380px; min-width: 0; }
-.vt-app .vt-filter-wrap > .vt-filter { flex: 1 1 auto; max-width: none; }
+.vt-app .vt-filter-wrap > .vt-filter { flex: 1 1 auto; max-width: none; min-width: 0; }
 .vt-app .vt-filter-btn {
 	position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none;
 	width: calc(var(--vt-ctl) - 10px); height: calc(var(--vt-ctl) - 10px); padding: 0; margin: 0 -2px 0 0; min-width: 0;

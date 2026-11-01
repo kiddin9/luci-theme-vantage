@@ -476,3 +476,59 @@ test('build: wired hosts from luci.vantage wired, one per MAC, Wi-Fi ports and s
 	assert.equal(m.clients.length, 1);
 	assert.deepEqual(model.build({}).wiredHosts, []);
 });
+
+test('build: a wired host on a bridge VLAN gets that VLAN\'s network and addresses', () => {
+	const m = model.build({
+		ifaces: [
+			{ interface: 'lan', up: true, l3_device: 'br-lan.10', device: 'br-lan.10', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] },
+			{ interface: 'wan', up: true, l3_device: 'wan', device: 'wan', 'ipv4-address': [ { address: '198.51.100.2', mask: 24 } ],
+				route: [ { target: '0.0.0.0', mask: 0, nexthop: '198.51.100.1' } ] }
+		],
+		devs: { lan1: { speed: '1000F', carrier: true }, wan: { speed: '1000F', carrier: true } },
+		hints: { '00:00:5E:00:53:41': { ipaddrs: [ '192.0.2.41' ] } },
+		fdb: [ { mac: '00:00:5e:00:53:41', port: 'lan1', bridge: 'br-lan', vlan: 10, seen: 2 } ]
+	});
+	assert.deepEqual([ m.wiredHosts[0].network, m.wiredHosts[0].ips ], [ 'lan', [ '192.0.2.41' ] ]);
+});
+
+test('build: an access point on a bridge with several ports takes the uplink where the gateway was learned', () => {
+	const ifaces = [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.10', mask: 24 } ],
+		route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] } ];
+	const devs = {
+		'br-lan': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'lan1', 'lan2', 'lan3', 'phy0-ap0' ] },
+		lan1: { devtype: 'ethernet', speed: '1000F', carrier: true }, lan2: { devtype: 'ethernet', speed: '2500F', carrier: true },
+		lan3: { devtype: 'ethernet', carrier: false }, 'phy0-ap0': { devtype: 'wlan' }
+	};
+	const hints = { '00:00:5E:00:53:01': { ipaddrs: [ '192.0.2.1' ] }, '00:00:5E:00:53:50': { ipaddrs: [ '192.0.2.50' ] } };
+	const fdb = [ { mac: '00:00:5e:00:53:01', port: 'lan2', bridge: 'br-lan', seen: 1 }, { mac: '00:00:5e:00:53:50', port: 'lan1', bridge: 'br-lan', seen: 1 } ];
+	const m = model.build({ ifaces, devs, hints, fdb });
+	assert.deepEqual([ m.uplink.dev, m.uplink.port, m.uplink.statsDev, m.uplink.speed.mbps ], [ 'lan2', 'lan2', 'lan2', 2500 ], 'the gateway\'s port, its counters and link');
+	assert.deepEqual(m.wiredHosts.map(h => [ h.port, h.gateway ]), [ [ 'lan2', true ], [ 'lan1', false ] ]);
+	/* the gateway not learned: a port with a link, and no claim which one leads to it */
+	const n = model.build({ ifaces, devs: Object.assign({}, devs, { lan1: { devtype: 'ethernet', carrier: false } }), hints, fdb: fdb.slice(1) });
+	assert.deepEqual([ n.uplink.dev, n.uplink.port ], [ 'lan2', null ]);
+	/* one wired member: that one leads to the gateway */
+	assert.equal(model.resolveUplink(IFACES, DEVS).port, 'eth0');
+});
+
+test('build: the uplink port through a bridge VLAN, an IPv6 gateway, and a port with a link before one without', () => {
+	const devs = {
+		'br-lan': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'lan1', 'lan2' ] },
+		'br-lan.10': { devtype: 'vlan', carrier: true },
+		lan1: { devtype: 'ethernet', carrier: true, speed: '1000F' }, lan2: { devtype: 'ethernet', carrier: true, speed: '2500F' }
+	};
+	/* the AP's address on VLAN 10 of the bridge; the gateway learned on lan2 */
+	const ifaces = [ { interface: 'lan', up: true, l3_device: 'br-lan.10', device: 'br-lan.10', 'ipv4-address': [ { address: '192.0.2.10', mask: 24 } ],
+		route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] } ];
+	const fdb = [ { mac: '00:00:5e:00:53:01', port: 'lan2', bridge: 'br-lan', vlan: 10, seen: 1 } ];
+	const m = model.build({ ifaces, devs, hints: { '00:00:5E:00:53:01': { ipaddrs: [ '192.0.2.1' ] } }, fdb });
+	assert.deepEqual([ m.uplink.l3dev, m.uplink.dev, m.uplink.port, m.uplink.speed.mbps ], [ 'br-lan.10', 'lan2', 'lan2', 2500 ]);
+	/* IPv6 only: the gateway is a link-local next hop the hints list under ip6addrs */
+	const v6 = [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv6-address': [ { address: '2001:db8::10', mask: 64 } ],
+		route: [ { target: '::', mask: 0, nexthop: 'fe80::1' } ] } ];
+	const n = model.build({ ifaces: v6, devs, hints: { '00:00:5E:00:53:01': { ip6addrs: [ 'fe80::1' ] } }, fdb: [ { mac: '00:00:5e:00:53:01', port: 'lan2', bridge: 'br-lan', seen: 1 } ] });
+	assert.deepEqual([ n.uplink.dev, n.uplink.port, n.wiredHosts[0].gateway ], [ 'lan2', 'lan2', true ]);
+	/* the gateway not learned: an unplugged Ethernet member loses to a switch port with a link */
+	const dsa = { 'br-lan': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'eth1', 'lan1' ] }, eth1: { devtype: 'ethernet', carrier: false }, lan1: { devtype: 'dsa', carrier: true } };
+	assert.equal(model.resolveUplink(v6, dsa).dev, 'lan1');
+});

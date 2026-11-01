@@ -14,8 +14,12 @@
 //              Read group luci-app-vantage.
 //   wired      the hosts the Linux bridges have learned on their ports:
 //              MAC, port, bridge, VLAN and seconds since last heard, from a
-//              read-only netlink dump of the forwarding database. Read
-//              group luci-app-vantage.
+//              read-only netlink dump of the forwarding database; at most
+//              128 per port and 512 in all. Not dumped (crowded: true)
+//              when the bridges hold FDB_LIMIT entries or more between
+//              them, counted first through sysfs without reading further: a flood of
+//              made-up addresses must not make rpcd build the whole
+//              table. Read group luci-app-vantage.
 //   set_alias  { mac, name, icon }: name one station, or remove its name
 //              with name ''. Validated here, whatever the browser did, and
 //              written to /etc/config/vantage only. Write group
@@ -41,6 +45,10 @@ const ICONS = [ 'phone', 'laptop', 'tablet', 'desktop', 'tv', 'speaker', 'printe
 const THERMAL = '/sys/class/thermal';
 const MAX_ZONES = 16;
 const MAX_HOSTS = 512;            // wired hosts per reply
+const MAX_PER_PORT = 128;         // of them on one port (the uplink's would take them all)
+const NET = '/sys/class/net';
+const FDB_LIMIT = 4096;           // forwarding entries, all bridges together, before wired() lists none
+const FDB_ENTRY = 16;             // sizeof(struct __fdb_entry), brforward's record
 
 /* ------------------------------------------------------------ helpers */
 
@@ -400,14 +408,38 @@ function netdev(v) {
 	return type(v) == 'string' && match(v, /^[A-Za-z0-9_.-]{1,15}$/) ? v : null;
 }
 
-// [ { mac, port, bridge, vlan, seen } ] in dump order, at most MAX_HOSTS:
-// what the bridges learned from their ports. Left out: the bridges' own
-// addresses (permanent), the switch drivers' copies (self, no master) and
-// group addresses. seen: seconds since the bridge last heard from the
-// host (the kernel counts in 1/100 s), null for a static entry.
+// true when the bridges hold FDB_LIMIT forwarding entries or more
+// between them (one dump returns them all): each sysfs brforward lists
+// its bridge's as FDB_ENTRY-byte records, and the kernel fills only as
+// many as asked for, so no more than the budget left is read
+function crowded() {
+	let left = FDB_LIMIT * FDB_ENTRY;
+
+	for (let n in (lsdir(NET) ?? [])) {
+		let b = netdev(n) ? readfile(NET + '/' + n + '/brforward', left) : null;
+
+		if (type(b) == 'string')
+			left -= length(b);
+
+		if (left <= 0)
+			return true;
+	}
+
+	return false;
+}
+
+// [ { mac, port, bridge, vlan, seen } ] in dump order, at most MAX_HOSTS
+// and MAX_PER_PORT a port: what the bridges learned from their ports.
+// Left out: the bridges' own addresses (permanent), the switch drivers'
+// copies (self, no master) and group addresses. seen: seconds since the
+// bridge last heard from the host (the kernel counts in 1/100 s), null
+// for a static entry. null when a bridge is crowded.
 function wired() {
+	if (crowded())
+		return null;
+
 	let fdb = rtnl.request(rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP, { family: rtnl.const.AF_BRIDGE });
-	let out = [];
+	let out = [], per = {};
 
 	for (let n in ((type(fdb) == 'array') ? fdb : [])) {
 		if (length(out) >= MAX_HOSTS)
@@ -416,8 +448,11 @@ function wired() {
 		let mac = (type(n) == 'object') ? norm_mac(n.lladdr) : null;
 
 		if (!mac || is_multicast(mac) || type(n.state) != 'int' || (n.state & rtnl.const.NUD_PERMANENT) ||
-		    (type(n.flags) == 'int' && (n.flags & rtnl.const.NTF_SELF)) || !netdev(n.master) || !netdev(n.dev))
+		    (type(n.flags) == 'int' && (n.flags & rtnl.const.NTF_SELF)) || !netdev(n.master) || !netdev(n.dev) ||
+		    (per[n.dev] ?? 0) >= MAX_PER_PORT)
 			continue;
+
+		per[n.dev] = (per[n.dev] ?? 0) + 1;
 
 		let upd = n.cacheinfo?.updated;
 
@@ -441,7 +476,9 @@ const methods = {
 			let reply = connect()?.call('network.wireless', 'status');
 			let out = {};
 
-			if (type(reply) != 'object')
+			// no object, or one that skipped every radio (netifd has no
+			// handler for the vendor's driver type): the config instead
+			if (type(reply) != 'object' || !length(reply))
 				return wireless_from_config();
 
 			for (let name, r in reply)
@@ -460,7 +497,9 @@ const methods = {
 
 	wired: {
 		call: function() {
-			return { hosts: wired() };
+			let hosts = wired();
+
+			return (hosts == null) ? { hosts: [], crowded: true } : { hosts };
 		}
 	},
 

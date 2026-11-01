@@ -171,7 +171,7 @@ test('wired hosts: the path counts those downstream only; filters, search and so
 		host('00:00:5e:00:53:03', 'lan1', { shared: true, peers: 2, ips: [ '192.0.2.30' ] }),
 		host('00:00:5e:00:53:04', 'eth0', { gateway: true })
 	];
-	self.m = { uplink: { dev: 'eth0', statsDev: 'eth0' }, wiredHosts: hosts, clients: [], radios: [ { id: 'radio0' } ] };
+	self.m = { uplink: { dev: 'eth0', statsDev: 'eth0', port: 'eth0' }, wiredHosts: hosts, clients: [], radios: [ { id: 'radio0' } ] };
 	self.st = { devRates: { lan2: { rx: 1000, tx: 3000 }, lan1: { rx: 5, tx: 5 } }, staRates: {}, radioInsights: {}, uplinkRate: null };
 	self.el = { clients: { scrollIntoView() {} }, filter: {} };
 	self.paintClients = () => {};
@@ -180,8 +180,13 @@ test('wired hosts: the path counts those downstream only; filters, search and so
 	assert.deepEqual(self.wiredPorts(), [ 'lan1', 'lan2' ], 'the uplink\'s port leads to the gateway');
 	const kpi = self.kpiSpecs()[0];
 	assert.deepEqual([ kpi.value, kpi.sub ], [ '3', '3 wired' ]);
-	self.m.uplink = { dev: 'br-wan', statsDev: 'br-wan' };
+	/* a bridge with several ports, the gateway's port unknown: the
+	   counters' port is a guess, so only the gateway is left out */
+	self.m.uplink = { dev: 'lan1', statsDev: 'lan1', port: null };
+	assert.deepEqual(self.wiredPorts(), [ 'lan1', 'lan2' ]);
+	hosts[3].gateway = false;
 	assert.deepEqual(self.wiredPorts(), [ 'eth0', 'lan1', 'lan2' ]);
+	hosts[3].gateway = true;
 
 	assert.deepEqual(self.filterDefs().map(d => d.slice(0, 3)), [ [ 'all', 'All', 4 ], [ 'port:eth0', 'eth0', 1 ], [ 'port:lan1', 'lan1', 2 ], [ 'port:lan2', 'lan2', 1 ] ]);
 	self.ui.chip = 'port:lan1';
@@ -203,4 +208,44 @@ test('wired hosts: the path counts those downstream only; filters, search and so
 	try { self.showWired('lan1'); }
 	finally { global.window = saved; }
 	assert.deepEqual([ self.ui.kind, self.ui.chip, self.ui.filter ], [ 'wired', 'port:lan1', '' ]);
+});
+
+test('names beyond a poll: reverse DNS and the vendor table for wired hosts too', async () => {
+	const self = Object.create(view);
+	const asked = [];
+	let ouiLoads = 0;
+	REPLIES['network.rrdns lookup'] = (addrs) => { asked.push(...addrs); return Promise.resolve({ '192.0.2.40': 'nas.home.arpa' }); };
+	const savedL = global.L;
+	global.L = { require: () => { ouiLoads++; return Promise.resolve({}); }, resolveDefault: (p, d) => Promise.resolve(p).catch(() => d) };
+	try {
+		self.st = { rdns: {}, mdnsOff: true, mdnsAt: 0 };
+		let rerendered = 0;
+		self.rerender = () => { rerendered++; };
+		/* no Wi-Fi clients at all: a router's wired hosts alone */
+		self.resolveMore({ clients: [], wiredHosts: [ { mac: '00:00:5e:00:53:40', ips: [ '192.0.2.40' ], nameSource: 'mac' } ] });
+		await new Promise(r => setTimeout(r, 0));
+		assert.deepEqual(asked, [ '192.0.2.40' ], 'a wired host\'s address is looked up');
+		assert.equal(self.st.rdns['192.0.2.40'], 'nas.home.arpa');
+		assert.equal(ouiLoads, 1, 'a wired host known only by its MAC loads the vendor table');
+		assert.ok(rerendered >= 1);
+	}
+	finally { global.L = savedL; delete REPLIES['network.rrdns lookup']; }
+});
+
+test('wired reply: hosts kept, a crowded bridge flagged, anything else read as none', async () => {
+	const self = Object.create(view);
+	const savedL = global.L;
+	global.L = { resolveDefault: (p, d) => Promise.resolve(p).then(v => v == null ? d : v, () => d) };
+	try {
+		const host = { mac: '00:00:5e:00:53:01', port: 'lan1', bridge: 'br-lan', vlan: null, seen: 3 };
+		const read = async reply => { REPLIES['luci.vantage wired'] = () => Promise.resolve(reply); const r = await self.fetch(); return [ r.fdb, r.fdbCrowded ]; };
+		assert.deepEqual(await read({ hosts: [ host ] }), [ [ host ], false ]);
+		assert.deepEqual(await read({ hosts: [], crowded: true }), [ [], true ]);
+		assert.deepEqual(await read({ hosts: 'x', crowded: 'yes' }), [ [], false ]);
+		assert.deepEqual(await read(null), [ [], false ]);
+		REPLIES['luci.vantage wired'] = () => Promise.reject(new Error('ubus code 6'));
+		const failed = await self.fetch();
+		assert.deepEqual([ failed.fdb, failed.fdbCrowded ], [ [], false ], 'a failed call');
+	}
+	finally { global.L = savedL; delete REPLIES['luci.vantage wired']; }
 });

@@ -1,6 +1,7 @@
 // Test double for ucode's rtnl module: the bridge forwarding database
-// dump from global STUB.fdb (null: the request failed). Fails closed: any
-// other request stops the run. Constants as the kernel's.
+// dump from global STUB.fdb (null: the request failed; 'no dump': a case
+// where none may happen). Fails closed: any other request stops the run.
+// Constants as the kernel's.
 'use strict';
 
 const C = {
@@ -13,6 +14,9 @@ const C = {
 function request(cmd, flags, msg) {
 	if (cmd != C.RTM_GETNEIGH || flags != C.NLM_F_DUMP || type(msg) != 'object' || msg.family != C.AF_BRIDGE || length(msg) != 1)
 		die(sprintf('rtnl stub: request %J %J %J', cmd, flags, msg));
+
+	if (global.STUB.fdb === 'no dump')
+		die('rtnl stub: a dump where none may happen');
 
 	return global.STUB.fdb;
 }

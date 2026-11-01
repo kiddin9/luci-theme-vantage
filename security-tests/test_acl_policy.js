@@ -252,11 +252,13 @@ function checkPluginSource(src) {
 	const word = /\b(system|popen|exec|require|loadfile|loadstring|include|render|writefile|unlink|global)\b/.exec(src);
 	assert.equal(word, null, word && `"${word[1]}" is banned in the plugin, as a word${REWORD}`);
 	assert.doesNotMatch(src, /(^|[^.\w])call\s*\(/m, 'the call() builtin is banned in the plugin');
-	/* fs: only under /sys/class/thermal */
+	/* fs: only the thermal zones under /sys/class/thermal, and the
+	   bridges' forwarding counts (brforward) under /sys/class/net */
 	assert.match(src, /^const THERMAL = '\/sys\/class\/thermal';$/m);
+	assert.match(src, /^const NET = '\/sys\/class\/net';$/m);
 	const fsCalls = [ ...src.matchAll(/\b(lsdir|readfile)\(([^,)]*)/g) ].map(m => m[1] + '(' + m[2]);
-	assert.ok(fsCalls.length >= 3, 'found the fs calls');
-	for (const c of fsCalls) assert.match(c, /^(lsdir\(THERMAL$|readfile\(THERMAL \+ '\/' \+ n \+ '\/(temp|type)')$/, c);
+	assert.ok(fsCalls.length >= 5, 'found the fs calls');
+	for (const c of fsCalls) assert.match(c, /^(lsdir\(THERMAL$|readfile\(THERMAL \+ '\/' \+ n \+ '\/(temp|type)'|lsdir\(NET$|readfile\(NET \+ '\/' \+ n \+ '\/brforward')$/, c);
 
 	/* uci: two cursors made without arguments, `uci` on CONFIG ('vantage')
 	   and `wl`, which only loads and walks WIRELESS ('wireless'); every

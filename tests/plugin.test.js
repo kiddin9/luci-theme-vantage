@@ -38,24 +38,39 @@ function findUcode() {
 const UCODE = findUcode();
 const NO_UCODE = UCODE ? false : 'no ucode binary (set UCODE=/path/to/ucode, e.g. an OpenWrt build\'s staging_dir/hostpkg/bin/ucode)';
 
-/* run cases through a plugin (the real one unless given its source):
-   the harness's spawnSync result */
-function spawnUcode(cases, source) {
+/* a fake /sys/class/net: br-lan and br-guest with forwarding records
+   in brforward (16 bytes each; `entries` is br-lan's count, or both as
+   [ lan, guest ]), eth0 without one */
+const BRIDGES = [ 'br-lan', 'br-guest' ];
+function fakeNet(dir, entries) {
+	const net = path.join(dir, 'net'), n = [].concat(entries, 0);
+	fs.mkdirSync(path.join(net, 'eth0'), { recursive: true });
+	BRIDGES.forEach((b, i) => {
+		fs.mkdirSync(path.join(net, b));
+		fs.writeFileSync(path.join(net, b, 'brforward'), Buffer.alloc(16 * n[i]));
+	});
+	return net;
+}
+
+/* run cases through a plugin (the real one unless given its source),
+   reading its bridges from a fake /sys/class/net with `entries` (default
+   3) records on br-lan: the harness's spawnSync result */
+function spawnUcode(cases, source, entries) {
 	const dir = mkTmp('vantage-plugin-');
 	const file = path.join(dir, 'cases.json');
-	const plugin = source == null ? PLUGIN : path.join(dir, 'luci.vantage');
+	const plugin = path.join(dir, 'luci.vantage');
 	try {
+		const src = source == null ? fs.readFileSync(PLUGIN, 'utf8') : source;
 		fs.writeFileSync(file, JSON.stringify(cases));
-		if (source != null) fs.writeFileSync(plugin, source);
+		fs.writeFileSync(plugin, src.replace(/^const NET = .*$/m, () => 'const NET = ' + JSON.stringify(fakeNet(dir, entries == null ? 3 : entries)) + ';'));
 		const args = [ '-L', path.join(__dirname, 'ucode/stubs') ];
 		const lib = path.join(path.dirname(UCODE), '../lib/ucode');
 		if (fs.existsSync(lib)) args.push('-L', lib);
 		args.push('-D', 'PLUGIN=' + plugin, '-D', 'CASES=' + file, path.join(__dirname, 'ucode/harness.uc'));
 		return spawnSync(UCODE, args, { encoding: 'utf8' });
 	} finally {
-		fs.unlinkSync(file);
-		if (source != null) fs.unlinkSync(plugin);
-		fs.rmdirSync(dir);
+		for (const f of [ file, plugin ].concat(BRIDGES.map(b => path.join(dir, 'net', b, 'brforward')))) if (fs.existsSync(f)) fs.unlinkSync(f);
+		for (const d of BRIDGES.map(b => 'net/' + b).concat([ 'net/eth0', 'net', '' ])) if (fs.existsSync(path.join(dir, d))) fs.rmdirSync(path.join(dir, d));
 	}
 }
 
@@ -208,6 +223,8 @@ const FDB = [
 	'junk', null, [ 'lan1' ]
 ];
 const FDB_MANY = Array.from({ length: 600 }, (_, i) => fdb('02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0'), 'lan1'));
+const FDB_UPLINK = Array.from({ length: 700 }, (_, i) => fdb('02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0'), 'eth0'))
+	.concat([ fdb('00:00:5e:00:53:31', 'lan1'), fdb('00:00:5e:00:53:32', 'lan2') ]);
 
 const BEHAVIOUR = [
 	/* add, one section per MAC, icon handling */
@@ -249,7 +266,11 @@ const BEHAVIOUR = [
 	{ method: 'wired', fdb: FDB },
 	{ method: 'wired', fdb: null },
 	{ method: 'wired', fdb: FDB_MANY },
-	{ method: 'wired', args: { port: 'lan1' } }
+	{ method: 'wired', args: { port: 'lan1' } },
+	/* netifd answers but skipped every radio: the config as well */
+	{ method: 'wireless', ubus: { 'network.wireless status': {} }, wireless_uci: MTK },
+	/* the uplink's port full of upstream hosts leaves room for the others */
+	{ method: 'wired', fdb: FDB_UPLINK }
 ];
 
 const NAME_CASES = NAMES.map(([ n ]) => ({ method: 'set_alias', args: { mac: MAC, name: n } }));
@@ -377,18 +398,41 @@ test('stand-in: wired keeps the hosts the bridges learned, with port, VLAN and s
 		{ mac: '00:00:5e:00:53:05', port: 'eth0', bridge: 'br-guest', vlan: null, seen: null }
 	]);
 	assert.deepEqual(none.reply, { hosts: [] });
-	assert.equal(many.reply.hosts.length, 512);
+	assert.equal(many.reply.hosts.length, 128, 'at most 128 on one port');
 	assert.equal(bad.status, 2);
+	const [ up ] = runShim([ BEHAVIOUR[BEHAVIOUR.length - 1] ]);
+	assert.deepEqual(up.reply.hosts.slice(-2).map(h => h.port), [ 'lan1', 'lan2' ], 'the downstream ports still listed');
+	assert.equal(up.reply.hosts.filter(h => h.port === 'eth0').length, 128);
 });
 
-test('stand-in: the replay falls back to the store\'s uci wireless only when network.wireless is missing', () => {
+test('ucode plugin: crowded bridges are counted, not dumped', { skip: NO_UCODE }, () => {
+	const src = fs.readFileSync(PLUGIN, 'utf8');
+	assert.match(src, /^const NET = '\/sys\/class\/net';$/m);
+	assert.match(src, /^const FDB_LIMIT = 4096;/m);
+	/* never more read than the budget left, so a huge table costs no more */
+	assert.match(src, /let left = FDB_LIMIT \* FDB_ENTRY;/);
+	assert.match(src, /readfile\(NET \+ '\/' \+ n \+ '\/brforward', left\)/);
+	const run = (entries, fdbIn) => { const r = spawnUcode([ { method: 'wired', fdb: fdbIn } ], null, entries); assert.equal(r.status, 0, r.stderr); return JSON.parse(r.stdout)[0].reply; };
+	/* 'no dump': the rtnl double stops the run if the table is dumped */
+	assert.deepEqual(run(4096, 'no dump'), { hosts: [], crowded: true }, 'at the limit: nothing dumped');
+	assert.deepEqual(run([ 3000, 3000 ], 'no dump'), { hosts: [], crowded: true }, 'two bridges add up: one dump returns both');
+	assert.equal(run(4095, FDB).hosts.length, 5, 'one below: dumped as usual');
+	assert.equal(run([ 2000, 2095 ], FDB).hosts.length, 5);
+	assert.equal(run(0, FDB).hosts.length, 5);
+	const dumped = spawnUcode([ { method: 'wired', fdb: 'no dump' } ], null, 0);
+	assert.notEqual(dumped.status, 0, 'the double does catch a dump');
+	assert.match(dumped.stderr, /rtnl stub: a dump where none may happen/);
+});
+
+test('stand-in: the replay falls back to the store\'s uci wireless when network.wireless is missing or empty', () => {
 	const values = {};
 	MTK.forEach((s, i) => { values[s['.name']] = Object.assign({ '.index': MTK.length - i }, s); });
 	const store = status => ({ data: () => status, uci: (m, a) => (m === 'get' && a.config === 'wireless') ? { result: [ 0, { values } ] } : { result: [ 4 ] } });
 	const r = shim.call(store(null), 'wireless', {}).result[1];
 	assert.deepEqual(Object.keys(r).sort(), [ 'MT7990_1_1', 'MT7990_1_2', 'MT7990_1_3', 'MT7990_off' ]);
 	assert.deepEqual(r.MT7990_1_2.interfaces.map(i => i.section), [ 'again5g', 'rai0' ], 'config order is the store\'s .index order');
-	assert.deepEqual(shim.call(store({}), 'wireless', {}), { result: [ 0, {} ] });
+	assert.deepEqual(Object.keys(shim.call(store({}), 'wireless', {}).result[1]).sort(), [ 'MT7990_1_1', 'MT7990_1_2', 'MT7990_1_3', 'MT7990_off' ], 'an empty status: the config');
+	assert.deepEqual(shim.call({ data: () => ({}), uci: () => ({ result: [ 4 ] }) }, 'wireless', {}), { result: [ 0, {} ] }, 'empty and no config: nothing');
 	assert.deepEqual(shim.call({ data: () => null, uci: () => ({ result: [ 4 ] }) }, 'wireless', {}), { result: [ 0, {} ] });
 });
 

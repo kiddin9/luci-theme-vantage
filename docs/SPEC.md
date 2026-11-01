@@ -238,6 +238,19 @@ text around it so it looks the same size.
   without samples (page hidden, failed polls) is hatched as "no data".
   The pick is saved in `localStorage`, validated on read; the tile's size
   and place don't change with it.
+- **Network path background**: behind the path, on its dot grid, one
+  canvas in the style picked under "Customize", the login page's two:
+  grid packets (the default; downloads run from the gateway's side,
+  uploads back, more and faster with the uplink's live rate, from a
+  couple at idle to 36 at 1 Gbit/s) or a starfield streaming out of this
+  device's node (faster with the rate), or none (the dot grid alone). It
+  draws over the path's height only, 20 frames a second up to
+  100 kbit/s and up to 30 from 10 Mbit/s (each frame is asked for when
+  it is drawn, not on every display refresh), and stops while another
+  window has the focus, the tab is hidden, the tile is out of view or
+  folded; with
+  reduced motion it is one still frame. Saved in `localStorage` like the
+  chart style.
 - **Firewall overview** (Network → Firewall → Overview, first tab):
   read-only, from uci `firewall`, read the way firewall4 (fw4, as 25.12
   ships it) reads it: its boolean spellings (1/on/true/yes, 0/off/false/
@@ -339,8 +352,14 @@ text around it so it looks the same size.
   (MAC, port, bridge, VLAN, seconds since last heard), from one
   read-only netlink dump of the forwarding database (`ucode-mod-rtnl`,
   RTM_GETNEIGH for AF_BRIDGE): not the bridges' own addresses, the switch
-  drivers' copies or group addresses, at most 512. The bridge forgets a
-  host after about five minutes without traffic.
+  drivers' copies or group addresses, at most 128 per port and 512 in
+  all, so the uplink's port cannot take every slot. It first counts the
+  bridges' entries through `/sys/class/net/<bridge>/brforward`, reading
+  no more than 4,096 records in all, and dumps nothing (`crowded: true`)
+  when they hold that many between them: a flood of made-up addresses
+  must not make rpcd build the whole table. The bridge forgets a host after about five
+  minutes without traffic. Where `network.wireless status` answers with
+  no radios at all, `wireless` reads the configuration too.
   `set_alias({mac, name, icon})`
   re-applies the view's rules on the device (unicast MAC, name of at most
   48 code points without control, bidi or invisible characters, icon from

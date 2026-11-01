@@ -122,3 +122,54 @@ test('synthetic: three documentation hosts on the recorded bridge\'s wired membe
 	}
 	finally { console.error = orig; }
 });
+
+test('--big: four radios, ten networks, 74 stations and five ports, counters that add up', () => {
+	const big = require('../dev/replay/big');
+	const ok = data => ({ result: [ 0, data ] });
+	const nf = { result: [ 4 ] };
+	/* the recorded LAN gives the addresses their prefix and the gateway */
+	big.transform('network.interface', 'dump', {}, ok({ interface: [
+		{ interface: 'lan', up: true, l3_device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.69', mask: 24 } ], route: [ { target: '0.0.0.0', mask: 0, nexthop: '192.0.2.1' } ] }
+	] }));
+	const wl = big.transform('luci.vantage', 'wireless', {}, ok({ radio0: {} })).result[1];
+	assert.deepEqual(Object.keys(wl), [ 'radio0', 'radio1', 'radio2', 'radio3' ]);
+	assert.deepEqual(Object.values(wl).map(r => r.config.band), [ '2g', '5g', '6g', '5g' ]);
+	const ifs = Object.values(wl).flatMap(r => r.interfaces.map(i => i.ifname));
+	assert.equal(ifs.length, 10);
+	assert.deepEqual(big.transform('network.wireless', 'status', {}, nf), ok(wl), 'whatever the recording answered');
+	/* stations per network, from iwinfo and hostapd alike */
+	let n = 0;
+	for (const f of ifs) {
+		const st = big.transform('iwinfo', 'assoclist', { device: f }, nf).result[1].results;
+		const hc = big.transform('hostapd.' + f, 'get_clients', {}, nf).result[1].clients;
+		assert.deepEqual(st.map(s => s.mac.toLowerCase()).sort(), Object.keys(hc).sort(), f);
+		assert.equal(big.transform('iwinfo', 'info', { device: f }, nf).result[1].channel, big.RADIOS.find(r => r.id === big.NETS.find(x => x[0] === f)[1]).channel);
+		assert.equal(big.transform('hostapd.' + f, 'get_status', {}, nf).result[1].status, 'ENABLED');
+		n += st.length;
+	}
+	assert.equal(n, 74);
+	/* an interface it does not know, and one device by name: untouched */
+	assert.deepEqual(big.transform('iwinfo', 'assoclist', { device: 'phy9-ap0' }, nf), nf);
+	assert.deepEqual(big.transform('hostapd.phy9-ap0', 'get_clients', {}, nf), nf);
+	assert.deepEqual(big.transform('network.device', 'status', { name: 'eth0' }, ok({ up: true })), ok({ up: true }));
+	/* a network's counters are its stations' sums; eth0 carries most of
+	   it, after the LAN's own; the counters only grow */
+	const devs = big.transform('network.device', 'status', {}, ok({ eth0: { devtype: 'ethernet' }, 'br-lan': { type: 'bridge' } })).result[1];
+	const sta = big.transform('iwinfo', 'assoclist', { device: 'phy1-ap0' }, nf).result[1].results;
+	const tx = sta.reduce((a, s) => a + s.tx.bytes, 0);
+	assert.ok(Math.abs(devs['phy1-ap0'].statistics.tx_bytes - tx) <= tx * 1e-3, 'the network sends what its stations get');
+	assert.equal(devs['br-lan']['bridge-members'][0], 'eth0', 'the uplink port first');
+	assert.deepEqual(big.PORTS.map(p => devs[p.dev].speed), [ '1000F', '2500F', '1000F', '100F', '2500F' ]);
+	const later = big.transform('network.device', 'status', {}, ok({})).result[1];
+	assert.ok(later.eth0.statistics.rx_bytes >= devs.eth0.statistics.rx_bytes);
+	assert.ok(Number.isSafeInteger(later.eth0.statistics.rx_bytes));
+	/* hosts on the ports and the gateway on eth0, documentation values only */
+	const hosts = big.transform('luci.vantage', 'wired', {}, ok({ hosts: [] })).result[1].hosts;
+	assert.equal(hosts.length, 14);
+	assert.deepEqual([ ...new Set(hosts.map(h => h.port)) ].sort(), [ 'eth0', 'lan1', 'lan2', 'lan3', 'lan4', 'lan5' ]);
+	const hints = big.transform('luci-rpc', 'getHostHints', {}, ok({})).result[1];
+	assert.deepEqual(hints['00:00:5E:00:53:FE'], { name: 'router', ipaddrs: [ '192.0.2.1' ], ip6addrs: [] });
+	const macs = Object.keys(hints).concat(hosts.map(h => h.mac), sta.map(s => s.mac));
+	assert.ok(macs.every(m => /^(00:00:5e:00:53|02:00:5e:[0-9a-f]{2}:[0-9a-f]{2}):[0-9a-f]{2}$/i.test(m)), 'documentation MACs');
+	assert.ok(Object.values(hints).every(h => h.ipaddrs.every(a => /^192\.0\.2\.\d+$/.test(a))), 'the recorded LAN\'s prefix');
+});

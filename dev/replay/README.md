@@ -8,7 +8,7 @@ Nothing is forwarded anywhere; there is no upstream.
         [--theme-dir <pkg>/htdocs/luci-static/<name>] [--theme <name>] \
         [--templates <pkg>/ucode/template] [--rootfs <device rootfs dump>] \
         [--app-dir <luci-app package dir>]... [--keep-uniwrt] [--no-synthetic] \
-        [--demo] [--wired] [--lang <lang>] [--fixtures <dir>]...
+        [--demo] [--wired | --big] [--lang <lang>] [--fixtures <dir>]...
 
 Open <http://127.0.0.1:8025/>. Any username/password logs in; the session
 lasts until the replay restarts (log in again after a restart).
@@ -211,6 +211,20 @@ no radios, the recorded uplink is renamed `wan` (proto `dhcp`), and
 synthetic `lan`, `vpn` (WireGuard) and `guest` (down) interfaces with
 documentation addresses and growing counters are added. Combine it with
 `--demo` as usual.
+
+## A bigger access point (`--big`)
+
+Serves the recorded device as a quad-radio Wi-Fi 7 access point, to see
+the dashboard with a deep network path and long lists (`big.js`): radios
+on 2.4 GHz (Wi-Fi 6), 5 GHz low and high and 6 GHz (320 MHz), ten
+networks, 74 stations with names, signals and traffic, and five wired
+ports with 13 hosts (a switch behind `lan3`, a second access point
+behind `lan5`) plus the gateway on `eth0`. Counters grow with the clock
+and add up (a network's are its stations', `eth0` carries most of the
+total). Addresses take the recorded LAN's first three octets, so use it
+with `--demo`; MACs are documentation values. Only the dashboard's calls
+are rewritten: LuCI's own wireless pages still show the recording. It
+cannot be combined with `--wired`.
 
 ## Translation preview (`--lang`)
 
