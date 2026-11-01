@@ -6,7 +6,7 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
-## Unreleased
+## 1.0.12 - 2026-11-01
 
 - **Dashboard: an animated network path.** The path's dot grid carries
   packets now, the login page's "Grid packets": downloads run from the

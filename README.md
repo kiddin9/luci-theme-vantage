@@ -13,7 +13,7 @@
 <br>
 
 <p align="center">
-  <img src="docs/screenshots/dashboard-dark.png" alt="The Vantage dashboard in dark mode: health strip, network path from gateway to access point, radios and SSIDs, live throughput with download and upload in their own colours, and radio cards" width="100%">
+  <img src="docs/screenshots/dashboard-dark.png" alt="The Vantage dashboard in dark mode: health strip flagging a weak client, network path from gateway to access point, radios and SSIDs with packets moving on its grid, live throughput with download and upload in their own colours, and radio cards" width="100%">
 </p>
 
 <p align="center"><sub>Screenshots show recorded data from a real access point, pseudonymised
@@ -51,8 +51,10 @@ without the app.
 
 - Health verdict with checks for uplink, CPU, memory, Wi-Fi, client signal
   and storage, each with a one-line reason
-- Network path from gateway to access point, radios and SSIDs; click any
-  node for details
+- Network path from gateway to access point, radios and SSIDs, and a
+  Wired branch for the Ethernet ports; click any node for details. Behind
+  it the login page's packets or starfield move with the live uplink
+  rate (or nothing, as picked under Customize)
 - Live throughput for the uplink and every radio (last 5 minutes), in the
   chart style you pick under Customize (overlaid, log scale, mirrored or
   separate lanes),
@@ -60,7 +62,9 @@ without the app.
 - Clients with human names (your alias, reverse DNS, mDNS, DHCP hints, WPS
   device name, vendor, or "Private device" for randomised MACs), signal,
   link rate, Wi-Fi generation, live traffic and an experience score with
-  its reason; filters by band, activity, weak signal and new clients
+  its reason; filters by band, activity, weak signal and new clients.
+  Wired devices too, from the bridge's table: port, link speed, traffic
+  when a device has its port to itself, and when each was last heard
 - Client inspector: signal history, link rates, capabilities, traffic,
   retries; rename a device in place
 - Top talkers, wireless networks, system tile (CPU per core, memory,
@@ -76,11 +80,11 @@ without the app.
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/dashboard-light.png" alt="Dashboard in light mode, flagging a client with weak signal"></td>
+    <td width="50%"><img src="docs/screenshots/dashboard-light.png" alt="Dashboard in light mode with every check passing"></td>
     <td width="50%"><img src="docs/screenshots/client-drawer.png" alt="Client inspector drawer open over the clients table"></td>
   </tr>
   <tr>
-    <td align="center"><sub>Light mode: the health strip flags a weak client</sub></td>
+    <td align="center"><sub>Light mode: health checks, network path and live throughput</sub></td>
     <td align="center"><sub>Client inspector with experience score, signal and link details</sub></td>
   </tr>
   <tr>
@@ -97,7 +101,7 @@ without the app.
   </tr>
   <tr>
     <td align="center"><sub>Stock Channel Analysis (neighbour networks are generated)</sub></td>
-    <td align="center"><sub>Phone layout with the bottom bar</sub></td>
+    <td align="center"><sub>Phone layout with the bottom bar and the Wi-Fi/Wired switch</sub></td>
   </tr>
 </table>
 
