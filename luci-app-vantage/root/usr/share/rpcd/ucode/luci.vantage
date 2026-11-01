@@ -12,6 +12,10 @@
 //   thermal    the temperature of each thermal zone in /sys/class/thermal
 //              (millidegrees Celsius) with its type; nothing else is read.
 //              Read group luci-app-vantage.
+//   wired      the hosts the Linux bridges have learned on their ports:
+//              MAC, port, bridge, VLAN and seconds since last heard, from a
+//              read-only netlink dump of the forwarding database. Read
+//              group luci-app-vantage.
 //   set_alias  { mac, name, icon }: name one station, or remove its name
 //              with name ''. Validated here, whatever the browser did, and
 //              written to /etc/config/vantage only. Write group
@@ -26,6 +30,7 @@
 import { cursor } from 'uci';
 import { connect } from 'ubus';
 import { lsdir, readfile } from 'fs';
+import * as rtnl from 'rtnl';
 
 const CONFIG = 'vantage';
 const WIRELESS = 'wireless';      // read only, by wireless_from_config()
@@ -35,6 +40,7 @@ const MAX_ALIASES = 512;          // client sections; bounds /etc/config/vantage
 const ICONS = [ 'phone', 'laptop', 'tablet', 'desktop', 'tv', 'speaker', 'printer', 'camera', 'console', 'watch', 'iot', 'router', 'device' ];
 const THERMAL = '/sys/class/thermal';
 const MAX_ZONES = 16;
+const MAX_HOSTS = 512;            // wired hosts per reply
 
 /* ------------------------------------------------------------ helpers */
 
@@ -388,6 +394,45 @@ function thermal() {
 	return out;
 }
 
+/* -------------------------------------------------------------- wired */
+
+function netdev(v) {
+	return type(v) == 'string' && match(v, /^[A-Za-z0-9_.-]{1,15}$/) ? v : null;
+}
+
+// [ { mac, port, bridge, vlan, seen } ] in dump order, at most MAX_HOSTS:
+// what the bridges learned from their ports. Left out: the bridges' own
+// addresses (permanent), the switch drivers' copies (self, no master) and
+// group addresses. seen: seconds since the bridge last heard from the
+// host (the kernel counts in 1/100 s), null for a static entry.
+function wired() {
+	let fdb = rtnl.request(rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP, { family: rtnl.const.AF_BRIDGE });
+	let out = [];
+
+	for (let n in ((type(fdb) == 'array') ? fdb : [])) {
+		if (length(out) >= MAX_HOSTS)
+			break;
+
+		let mac = (type(n) == 'object') ? norm_mac(n.lladdr) : null;
+
+		if (!mac || is_multicast(mac) || type(n.state) != 'int' || (n.state & rtnl.const.NUD_PERMANENT) ||
+		    (type(n.flags) == 'int' && (n.flags & rtnl.const.NTF_SELF)) || !netdev(n.master) || !netdev(n.dev))
+			continue;
+
+		let upd = n.cacheinfo?.updated;
+
+		push(out, {
+			mac,
+			port: n.dev,
+			bridge: n.master,
+			vlan: (type(n.vlan) == 'int' && n.vlan > 0 && n.vlan < 4095) ? n.vlan : null,
+			seen: (!(n.state & rtnl.const.NUD_NOARP) && type(upd) == 'int' && upd >= 0) ? int(upd / 100) : null
+		});
+	}
+
+	return out;
+}
+
 /* ------------------------------------------------------------ methods */
 
 const methods = {
@@ -410,6 +455,12 @@ const methods = {
 	thermal: {
 		call: function() {
 			return { zones: thermal() };
+		}
+	},
+
+	wired: {
+		call: function() {
+			return { hosts: wired() };
 		}
 	},
 

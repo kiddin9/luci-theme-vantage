@@ -368,6 +368,7 @@ return baseclass.extend({
 	/* raw: { board, info, ifaces, devs, wifi, iwinfo: { ifname: info },
 	          assoc: { ifname: [ station ] }, hapd: { ifname: { clients } },
 	          hapdStatus: { ifname: status }, hints, aliases, rdns, mdns,
+	          fdb: [ luci.vantage wired host ] (-> wiredHosts),
 	          vendor: fn(mac) -> name|null } */
 	build: function(raw) {
 		raw = raw || {};
@@ -465,6 +466,29 @@ return baseclass.extend({
 				if (mac) everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), subnets) });
 			});
 		});
+		/* wired hosts: what the bridges learned on ports that are not
+		   Wi-Fi, once per MAC (the entry heard last, a learned one before
+		   a static one), stations left out */
+		var staMacs = Object.create(null), fdb = Object.create(null), wiredMacs = [];
+		everyone.forEach(function(e) { staMacs[e.mac] = true; });
+		arr(raw.fdb).forEach(function(h) {
+			var mac = h && names.normMac(h.mac);
+			if (!mac || staMacs[mac] || typeof h.port !== 'string' || self.isWireless(h.port, devs[h.port], wlNames)) return;
+			var seen = finite(h.seen) && h.seen >= 0 ? h.seen : null, prev = fdb[mac];
+			if (prev && (seen == null || (prev.seen != null && prev.seen <= seen))) return;
+			if (!prev) wiredMacs.push(mac);
+			fdb[mac] = { port: h.port, bridge: typeof h.bridge === 'string' ? h.bridge : null, vlan: finite(h.vlan) ? h.vlan : null, seen: seen };
+		});
+		/* the network on each bridge, and its IPv4 subnets for the hosts'
+		   addresses */
+		var lans = Object.create(null);
+		arr(raw.ifaces).forEach(function(i) {
+			var d = i && (i.l3_device || i.device);
+			if (typeof d === 'string' && i.interface && !lans[d])
+				lans[d] = { name: String(i.interface), ipv4: arr(i['ipv4-address']).map(function(a) { return a && a.address ? a.address + '/' + a.mask : null; }).filter(Boolean) };
+		});
+		function wiredSubnets(mac) { var l = fdb[mac].bridge && lans[fdb[mac].bridge]; return l && l.ipv4.length ? l.ipv4 : subnets; }
+		wiredMacs.forEach(function(mac) { everyone.push({ mac: mac, ips: self.hintAddrs(hintOf(mac), wiredSubnets(mac)) }); });
 		var mdns = names.mdnsForStations(raw.mdns, everyone);
 
 		ssids.forEach(function(ss) {
@@ -532,6 +556,47 @@ return baseclass.extend({
 			});
 		});
 
+		/* A host alone on its port has the port's link and traffic to
+		   itself; hosts sharing one (behind a switch or another access
+		   point) only share the port's. The gateway is found by the
+		   address the host hints give it. */
+		var perPort = Object.create(null), gwMac = null;
+		wiredMacs.forEach(function(mac) { var p = fdb[mac].port; perPort[p] = (perPort[p] || 0) + 1; });
+		if (uplink && uplink.gateway) Object.keys(hints).forEach(function(k) {
+			var mac = names.normMac(k);
+			if (mac && arr(obj(hints[k]).ipaddrs).indexOf(uplink.gateway) >= 0) gwMac = mac;
+		});
+		var wired = wiredMacs.map(function(mac) {
+			var h = fdb[mac], d = devs[h.port], hint = hintOf(mac), ips = self.hintAddrs(hint, wiredSubnets(mac));
+			var alias = raw.aliases && raw.aliases[mac];
+			var vendor = typeof raw.vendor === 'function' ? raw.vendor(names.ouiKey(mac)) : null;
+			var nm = names.resolve({ mac: mac, alias: alias, ips: ips, rdns: raw.rdns, mdns: mdns, hint: hint, wps: null, vendor: vendor });
+			return {
+				mac: mac,
+				macLabel: fmt.mac(mac),
+				name: nm.name,
+				nameSource: nm.source,
+				nameSourceLabel: nm.sourceLabel,
+				icon: nm.icon,
+				secondary: nm.secondary,
+				isPrivate: nm.isPrivate,
+				alias: alias ? alias.name : null,
+				aliasSid: alias ? alias.sid : null,
+				vendor: nm.source === 'vendor' ? vendor : null,
+				ips: ips,
+				port: h.port,
+				bridge: h.bridge,
+				network: h.bridge && lans[h.bridge] ? lans[h.bridge].name : null,
+				vlan: h.vlan,
+				seen: h.seen,
+				peers: perPort[h.port],
+				shared: perPort[h.port] > 1,
+				speed: d ? self.parseSpeed(d.speed) : null,
+				carrier: d ? d.carrier !== false : null,
+				gateway: mac === gwMac
+			};
+		});
+
 		var mem = this.memory(info.memory);
 		var release = obj(board.release);
 		return {
@@ -554,7 +619,8 @@ return baseclass.extend({
 			networks: this.networks(raw.ifaces, uplink),
 			radios: radios,
 			ssids: ssids,
-			clients: clients
+			clients: clients,
+			wiredHosts: wired
 		};
 	},
 

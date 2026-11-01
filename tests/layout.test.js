@@ -20,7 +20,8 @@ test('tier follows the stylesheet breakpoints', () => {
 test('defaults: Wi-Fi and wired devices', () => {
 	assert.deepEqual(ids(layout.defaults('wide', false)), [ 'hero', 'chart', 'radios', 'clients', 'sys', 'talk', 'ssids' ]);
 	assert.deepEqual(ids(layout.defaults('narrow', false)), [ 'clients', 'talk', 'radios', 'hero', 'ssids', 'chart', 'sys' ]);
-	assert.deepEqual(layout.defaults('wide', true).map(e => [ e.id, e.c, e.w ]), [ [ 'hero', 0, 4 ], [ 'chart', 0, 3 ], [ 'sys', 3, 1 ] ]);
+	assert.deepEqual(layout.defaults('wide', true).map(e => [ e.id, e.c, e.w ]), [ [ 'hero', 0, 4 ], [ 'chart', 0, 3 ], [ 'sys', 3, 1 ], [ 'clients', 0, 4 ] ]);
+	assert.deepEqual(ids(layout.defaults('narrow', true)), [ 'hero', 'clients', 'chart', 'sys' ], 'wired hosts are clients too');
 	assert.equal(layout.key('wide', true), 'wide-wired');
 });
 
@@ -44,8 +45,8 @@ test('normalize: tiles missing from a stored layout return after their default n
 });
 
 test('normalize: Wi-Fi tiles never appear on a wired device; one tile always shows', () => {
-	const n = layout.normalize([ { id: 'clients', w: 2 }, { id: 'sys', w: 1, hide: true }, { id: 'hero', w: 4, hide: true }, { id: 'chart', w: 2, hide: true } ], 'wide', true);
-	assert.deepEqual(ids(n), [ 'sys', 'hero', 'chart' ]);
+	const n = layout.normalize([ { id: 'talk', w: 2 }, { id: 'sys', w: 1, hide: true }, { id: 'hero', w: 4, hide: true }, { id: 'chart', w: 2, hide: true }, { id: 'clients', w: 4, hide: true } ], 'wide', true);
+	assert.deepEqual(ids(n), [ 'sys', 'hero', 'chart', 'clients' ]);
 	assert.equal(shown(n).length, 1);
 });
 
@@ -94,6 +95,7 @@ test('the last shown tile cannot be hidden', () => {
 	let l = layout.defaults('wide', true);
 	l = layout.setHidden(l, 'hero', true);
 	l = layout.setHidden(l, 'chart', true);
+	l = layout.setHidden(l, 'clients', true);
 	l = layout.setHidden(l, 'sys', true);
 	assert.deepEqual(shown(l), [ 'sys' ]);
 	assert.deepEqual(shown(layout.setHidden(l, 'hero', false)), [ 'hero', 'sys' ]);
@@ -126,9 +128,9 @@ test('pack: small gaps snap, large ones only for the chart', () => {
 	assert.equal(near.talk.h, 130);
 	const far = layout.pack([ { id: 'talk', c: 0, w: 1, h: 100 }, { id: 'ssids', c: 1, w: 1, h: 400 }, { id: 'sys', c: 0, w: 2, h: 50 } ], 2, 10).rects;
 	assert.equal(far.talk.h, 100);
-	const wired = layout.pack(layout.defaults('wide', true).map(e => ({ id: e.id, c: e.c, w: e.w, h: { hero: 360, chart: 330, sys: 520 }[e.id] })), 4, 14);
+	const wired = layout.pack(layout.defaults('wide', true).map(e => ({ id: e.id, c: e.c, w: e.w, h: { hero: 360, chart: 330, sys: 520, clients: 300 }[e.id] })), 4, 14);
 	assert.equal(wired.rects.chart.h, 520, 'the chart fills the row beside System');
-	assert.equal(wired.height, 360 + 14 + 520);
+	assert.equal(wired.height, 360 + 14 + 520 + 14 + 300);
 });
 
 test('pack: a tile never stretches over a tile placed under it', () => {

@@ -437,3 +437,42 @@ test('sampleClock: same device sample is skipped, drift uses device spacing', ()
 	/* no localtime: browser time */
 	assert.deepEqual(model.sampleClock(a, 12000, undefined), { at: 12000, local: null });
 });
+
+test('build: wired hosts from luci.vantage wired, one per MAC, Wi-Fi ports and stations left out', () => {
+	const m = model.build({
+		ifaces: [
+			{ interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] },
+			{ interface: 'wan', up: true, l3_device: 'wan', device: 'wan', 'ipv4-address': [ { address: '198.51.100.2', mask: 24 } ],
+				route: [ { target: '0.0.0.0', mask: 0, nexthop: '198.51.100.1' } ] }
+		],
+		devs: { lan1: { speed: '1000F', carrier: true }, lan2: { speed: '2500F', carrier: true }, wan: { speed: '1000F' }, 'phy2g-ap0': { devtype: 'wlan' } },
+		wifi: { radio0: { up: true, config: { band: '2g', channel: '1', htmode: 'HE20' }, interfaces: [ { ifname: 'phy2g-ap0', config: { ssid: 'Home', mode: 'ap' } } ] } },
+		assoc: { 'phy2g-ap0': [ { mac: '00:00:5E:00:53:20', signal: -50 } ] },
+		hints: {
+			'00:00:5E:00:53:01': { name: 'desk', ipaddrs: [ '192.0.2.10', '203.0.113.9' ] },
+			'00:00:5E:00:53:09': { ipaddrs: [ '198.51.100.1' ] }
+		},
+		aliases: { '00:00:5e:00:53:03': { name: 'NAS', sid: 'cfg01' } },
+		fdb: [
+			{ mac: '00:00:5e:00:53:01', port: 'lan1', bridge: 'br-lan', seen: 3 },
+			{ mac: '00:00:5e:00:53:02', port: 'lan2', bridge: 'br-lan', seen: 9 },
+			{ mac: '00:00:5e:00:53:03', port: 'lan2', bridge: 'br-lan', seen: null },
+			{ mac: '00:00:5e:00:53:02', port: 'lan2', bridge: 'br-lan', vlan: 10, seen: 2 },
+			{ mac: '00:00:5e:00:53:03', port: 'lan2', bridge: 'br-lan', seen: 40 },
+			{ mac: '00:00:5e:00:53:04', port: 'phy2g-ap0', bridge: 'br-lan', seen: 1 },
+			{ mac: '00:00:5e:00:53:20', port: 'lan1', bridge: 'br-lan', seen: 1 },
+			{ mac: '00:00:5e:00:53:09', port: 'wan', bridge: null, seen: 5 },
+			{ mac: 'junk', port: 'lan1' }, null, { mac: '00:00:5e:00:53:05', port: 7 }
+		]
+	});
+	assert.deepEqual(m.wiredHosts.map(h => [ h.mac, h.name, h.port, h.network, h.vlan, h.seen, h.peers, h.shared, h.speed && h.speed.mbps, h.gateway ]), [
+		[ '00:00:5e:00:53:01', 'desk', 'lan1', 'lan', null, 3, 1, false, 1000, false ],
+		[ '00:00:5e:00:53:02', 'Device · …00:53:02', 'lan2', 'lan', 10, 2, 2, true, 2500, false ],
+		[ '00:00:5e:00:53:03', 'NAS', 'lan2', 'lan', null, 40, 2, true, 2500, false ],
+		[ '00:00:5e:00:53:09', 'Device · …00:53:09', 'wan', null, null, 5, 1, false, 1000, true ]
+	], 'the latest entry per MAC, a learned one before a static one; Wi-Fi ports and stations left out');
+	assert.deepEqual(m.wiredHosts[0].ips, [ '192.0.2.10' ], 'addresses in the subnets of the bridge\'s network');
+	assert.deepEqual(m.wiredHosts[3].ips, [ '198.51.100.1' ], 'a host off any bridge network: the uplink\'s subnets');
+	assert.equal(m.clients.length, 1);
+	assert.deepEqual(model.build({}).wiredHosts, []);
+});

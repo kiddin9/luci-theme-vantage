@@ -160,3 +160,47 @@ test('page links: a page LuCI keeps but marks unsatisfied (no block-mount) count
 	/* no menu (the load failed): links stay */
 	assert.equal(hasPage(null)([ 'admin', 'system', 'mounts' ]), true);
 });
+
+test('wired hosts: the path counts those downstream only; filters, search and sort', () => {
+	const self = Object.create(view);
+	const host = (mac, port, extra) => Object.assign({ mac, port, name: 'h' + mac.slice(-2), macLabel: mac.toUpperCase(), bridge: 'br-lan', network: 'lan',
+		vlan: null, seen: 5, shared: false, peers: 1, speed: { mbps: 1000, duplex: 'full' }, ips: [], nameSourceLabel: 'MAC' }, extra);
+	const hosts = [
+		host('00:00:5e:00:53:01', 'lan2', { seen: 30 }),
+		host('00:00:5e:00:53:02', 'lan1', { shared: true, peers: 2, seen: null }),
+		host('00:00:5e:00:53:03', 'lan1', { shared: true, peers: 2, ips: [ '192.0.2.30' ] }),
+		host('00:00:5e:00:53:04', 'eth0', { gateway: true })
+	];
+	self.m = { uplink: { dev: 'eth0', statsDev: 'eth0' }, wiredHosts: hosts, clients: [], radios: [ { id: 'radio0' } ] };
+	self.st = { devRates: { lan2: { rx: 1000, tx: 3000 }, lan1: { rx: 5, tx: 5 } }, staRates: {}, radioInsights: {}, uplinkRate: null };
+	self.el = { clients: { scrollIntoView() {} }, filter: {} };
+	self.paintClients = () => {};
+	self.ui = { kind: 'wired', chip: 'all', filter: '' };
+
+	assert.deepEqual(self.wiredPorts(), [ 'lan1', 'lan2' ], 'the uplink\'s port leads to the gateway');
+	const kpi = self.kpiSpecs()[0];
+	assert.deepEqual([ kpi.value, kpi.sub ], [ '3', '3 wired' ]);
+	self.m.uplink = { dev: 'br-wan', statsDev: 'br-wan' };
+	assert.deepEqual(self.wiredPorts(), [ 'eth0', 'lan1', 'lan2' ]);
+
+	assert.deepEqual(self.filterDefs().map(d => d.slice(0, 3)), [ [ 'all', 'All', 4 ], [ 'port:eth0', 'eth0', 1 ], [ 'port:lan1', 'lan1', 2 ], [ 'port:lan2', 'lan2', 1 ] ]);
+	self.ui.chip = 'port:lan1';
+	assert.deepEqual(hosts.filter(h => self.matches(h)).map(h => h.mac.slice(-2)), [ '02', '03' ]);
+	self.ui.chip = 'all';
+	self.ui.filter = '192.0.2.30';
+	assert.deepEqual(hosts.filter(h => self.matches(h)).map(h => h.mac.slice(-2)), [ '03' ]);
+	self.ui.filter = 'lan2';
+	assert.deepEqual(hosts.filter(h => self.matches(h)).map(h => h.mac.slice(-2)), [ '01' ]);
+
+	assert.equal(self.portRate(hosts[0]).tx, 3000, 'alone on its port: the port\'s traffic is its own');
+	assert.equal(self.portRate(hosts[1]), null, 'a shared port\'s traffic is nobody\'s');
+	assert.deepEqual([ self.sortValue(hosts[0], 'live'), self.sortValue(hosts[1], 'live') ], [ 4000, -1 ]);
+	assert.deepEqual([ self.sortValue(hosts[0], 'link'), self.sortValue(hosts[1], 'link') ], [ 1000, -1 ]);
+	assert.equal(self.sortValue(hosts[1], 'seen'), Infinity, 'a static entry sorts last');
+
+	const saved = global.window;
+	global.window = { matchMedia: () => ({ matches: true }) };
+	try { self.showWired('lan1'); }
+	finally { global.window = saved; }
+	assert.deepEqual([ self.ui.kind, self.ui.chip, self.ui.filter ], [ 'wired', 'port:lan1', '' ]);
+});

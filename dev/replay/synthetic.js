@@ -17,6 +17,9 @@
    addresses only). Scan results are the AP's own sibling BSSIDs (read from
    the mirror at run time, never written to the repo) plus invented
    neighbours with example SSIDs and locally administered 02:00:5E:xx BSSIDs.
+   The bridge forwarding database (luci.vantage wired) holds three invented
+   hosts with documentation MACs (00:00:5E:00:53:Ax) on the first wired
+   member of the recorded bridge, heard a few seconds to minutes ago.
 
    luci-bwc output shape (rpcd `luci` wraps its lines into { result: [...] }):
      -l load       [ ts, load1*100, load5*100, load15*100 ]
@@ -163,6 +166,25 @@ class Synthetic {
 	memo(key, build) {
 		if (!this.cache.has(key)) this.cache.set(key, build());
 		return this.cache.get(key);
+	}
+
+	/* an rtnl-shaped dump of the bridge forwarding database (see the
+	   header), for the plugin stand-in; [] without a recorded bridge */
+	fdb() {
+		const devs = this.store.data('network.device', 'status', {}) || {};
+		let bridge = null, port = null;
+		for (const [ name, d ] of Object.entries(devs)) {
+			if (!d || d.type !== 'bridge' || !Array.isArray(d['bridge-members'])) continue;
+			const wired = d['bridge-members'].filter(m => typeof m === 'string' && devs[m] && devs[m].devtype !== 'wlan' && !/^(phy|wlan|ra)/.test(m));
+			if (wired.length) { bridge = name; port = wired[0]; break; }
+		}
+		if (!bridge) return [];
+		this.announce('luci.vantage wired');
+		const t = Math.floor(Date.now() / 1000);
+		return [ 1, 2, 3 ].map(i => ({
+			family: 7, dev: port, master: bridge, lladdr: '00:00:5e:00:53:a' + i, state: 0x02, flags: 0,
+			cacheinfo: { confirmed: 0, used: 0, updated: ((t * i * 7) % (i * 90)) * 100, refcnt: 0 }
+		}));
 	}
 
 	/* reply body or null when this call is not synthesised */

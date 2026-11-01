@@ -26,7 +26,7 @@ LUCI_DESCRIPTION:=Live network dashboard (landing page under admin/dashboard): d
 # Optional at runtime, degrade when absent: rpcd-mod-rrdns (reverse DNS
 # names), umdns (mDNS names), hostapd ubus objects (WPS names, client
 # capabilities).
-LUCI_DEPENDS:=+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs
+LUCI_DEPENDS:=+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl
 LUCI_PKGARCH:=all
 LUCI_MAINTAINER:=anothaDev <10740588+anothaDev@users.noreply.github.com>
 LUCI_URL:=https://github.com/anothaDev/luci-theme-vantage

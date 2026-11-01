@@ -11,6 +11,9 @@
      luci.vantage thermal    the thermal zones of the --fixtures file
                              system (root/sys/class/thermal), read as the
                              plugin reads sysfs; none without one
+     luci.vantage wired      the hosts of a bridge forwarding database
+                             dump shaped as rtnl's: synthetic.js invents
+                             one, wired.js replaces the reply in --wired
      luci.vantage set_alias  { mac, name, icon } -> uci vantage in the
                              store's overlay, committed at once
    tests/plugin.test.js checks this file, the real plugin (when a host
@@ -29,6 +32,9 @@ const MAX_ALIASES = 512;
 const ICONS = [ 'phone', 'laptop', 'tablet', 'desktop', 'tv', 'speaker', 'printer', 'camera', 'console', 'watch', 'iot', 'router', 'device' ];
 const THERMAL = '/sys/class/thermal';
 const MAX_ZONES = 16;
+const MAX_HOSTS = 512;
+/* the kernel's numbers, as rtnl.const */
+const NUD_NOARP = 0x40, NUD_PERMANENT = 0x80, NTF_SELF = 0x02;
 
 /* rpcd ubus status codes */
 const INVALID_ARGUMENT = 2;
@@ -38,6 +44,7 @@ const METHOD_NOT_FOUND = 3;
 const POLICY = {
 	wireless: {},
 	thermal: {},
+	wired: {},
 	set_alias: { mac: 'string', name: 'string', icon: 'string' }
 };
 
@@ -259,6 +266,26 @@ function thermal(fixtures) {
 	return out;
 }
 
+/* wired: [ { mac, port, bridge, vlan, seen } ] from an rtnl-shaped dump
+   of the bridge forwarding database (or nothing), as the plugin's wired() */
+function wired(fdb) {
+	const out = [];
+	const netdev = v => typeof v === 'string' && /^[A-Za-z0-9_.-]{1,15}$/.test(v);
+	for (const n of Array.isArray(fdb) ? fdb : []) {
+		if (out.length >= MAX_HOSTS) break;
+		const mac = (n && typeof n === 'object' && !Array.isArray(n)) ? normMac(n.lladdr) : null;
+		if (!mac || isMulticast(mac) || !Number.isInteger(n.state) || (n.state & NUD_PERMANENT) ||
+		    (Number.isInteger(n.flags) && (n.flags & NTF_SELF)) || !netdev(n.master) || !netdev(n.dev)) continue;
+		const upd = n.cacheinfo && n.cacheinfo.updated;
+		out.push({
+			mac, port: n.dev, bridge: n.master,
+			vlan: Number.isInteger(n.vlan) && n.vlan > 0 && n.vlan < 4095 ? n.vlan : null,
+			seen: !(n.state & NUD_NOARP) && Number.isInteger(upd) && upd >= 0 ? Math.floor(upd / 100) : null
+		});
+	}
+	return out;
+}
+
 /* a uci cursor on the replay store's overlay for one config */
 function storeCursor(store) {
 	const u = (method, a) => store.uci(method, Object.assign({ config: CONFIG }, a));
@@ -285,8 +312,9 @@ function call(store, method, args) {
 		return { result: [ 0, wirelessReply(status, status == null ? storeSections(store, 'wireless') : null) ] };
 	}
 	if (method === 'thermal') return { result: [ 0, { zones: thermal(store.fixtures) } ] };
+	if (method === 'wired') return { result: [ 0, { hosts: wired(store.synthetic && store.synthetic.fdb ? store.synthetic.fdb() : null) } ] };
 	if (store.uciSeed) store.uciSeed(CONFIG, { main: { '.anonymous': false, '.type': 'vantage', '.name': 'main' } });
 	return { result: [ 0, setAlias(storeCursor(store), args) ] };
 }
 
-module.exports = { OBJECT, POLICY, MAX_ALIASES, NAME_MAX, ICONS, normMac, validateName, reduceWireless, wirelessFromConfig, wirelessReply, thermal, setAlias, argsOk, call };
+module.exports = { OBJECT, POLICY, MAX_ALIASES, NAME_MAX, ICONS, normMac, validateName, reduceWireless, wirelessFromConfig, wirelessReply, thermal, wired, setAlias, argsOk, call };

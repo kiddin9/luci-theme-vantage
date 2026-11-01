@@ -98,4 +98,27 @@ test('--wired: no radios, the uplink renamed wan, synthetic networks with growin
 	/* one device asked by name, errors: untouched */
 	assert.deepEqual(wired.transform('network.device', 'status', { name: 'eth0' }, ok({ up: true })), ok({ up: true }));
 	assert.deepEqual(wired.transform('luci.vantage', 'wireless', {}, { error: 'x' }), { error: 'x' });
+	/* switch ports in the bridge, hosts on them, their names */
+	assert.deepEqual(devs()['br-lan0']['bridge-members'], [ 'lan1', 'lan2' ]);
+	assert.deepEqual([ devs().lan1.speed, devs().lan2.speed ], [ '1000F', '2500F' ]);
+	const hosts = wired.transform('luci.vantage', 'wired', {}, ok({ hosts: [] })).result[1].hosts;
+	assert.deepEqual(hosts.map(h => [ h.mac, h.port ]), wired.HOSTS.map(h => [ h[0], h[1] ]));
+	assert.ok(hosts.every(h => /^00:00:5e:00:53:/.test(h.mac) && Number.isInteger(h.seen) && h.seen >= 0));
+	const hints = wired.transform('luci-rpc', 'getHostHints', {}, ok({})).result[1];
+	assert.deepEqual(hints['00:00:5E:00:53:B1'], { ipaddrs: [ '198.51.100.10' ], ip6addrs: [], name: 'desktop' });
+});
+
+test('synthetic: three documentation hosts on the recorded bridge\'s wired member, none without a bridge', () => {
+	const { Synthetic } = require('../dev/replay/synthetic');
+	const plugin = require('../dev/replay/vantage-plugin');
+	const devs = { 'br-lan': { type: 'bridge', 'bridge-members': [ 'phy0-ap0', 'eth0' ] }, eth0: { devtype: 'ethernet' }, 'phy0-ap0': { devtype: 'wlan' } };
+	const syn = new Synthetic({ data: (o, m) => (o === 'network.device' && m === 'status') ? devs : null });
+	const orig = console.error;
+	console.error = () => {};
+	try {
+		const hosts = plugin.wired(syn.fdb());
+		assert.deepEqual(hosts.map(h => [ h.mac, h.port, h.bridge ]), [ 1, 2, 3 ].map(i => [ '00:00:5e:00:53:a' + i, 'eth0', 'br-lan' ]));
+		assert.deepEqual(new Synthetic({ data: () => ({ eth0: {} }) }).fdb(), []);
+	}
+	finally { console.error = orig; }
 });

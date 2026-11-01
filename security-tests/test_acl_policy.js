@@ -27,11 +27,13 @@
  *   the luci.vantage methods the ACL grants, opens config `vantage`, and
  *   only loads and walks config `wireless` (luci.vantage wireless without
  *   netifd's network.wireless object; same reduced reply, no keys), and
- *   imports nothing but uci, ubus and fs's lsdir and readfile, which
- *   it calls on paths under /sys/class/thermal only (luci.vantage
- *   thermal); no other file access, no process execution, and no
- *   module, cursor or connection passed on under another name; altered
- *   copies of the plugin check that these rules catch each breach;
+ *   imports nothing but uci, ubus, fs's lsdir and readfile, which it
+ *   calls on paths under /sys/class/thermal only (luci.vantage
+ *   thermal), and rtnl for one read-only dump of the bridge forwarding
+ *   database (luci.vantage wired); no other file access, no other
+ *   netlink request, no process execution, and no module, cursor or
+ *   connection passed on under another name; altered copies of the
+ *   plugin check that these rules catch each breach;
  * - every rpc.declare({ object, method }) in the app's JavaScript is
  *   granted, and every grant is used by a declare (no stale privilege);
  *   `session access` is the only call left to the platform (rpcd grants it
@@ -80,7 +82,7 @@ const READ_UBUS = {
 	'network.interface': [ 'dump' ],
 	'network.device': [ 'status' ],
 	'luci-rpc': [ 'getHostHints' ],
-	'luci.vantage': [ 'thermal', 'wireless' ],
+	'luci.vantage': [ 'thermal', 'wired', 'wireless' ],
 	'iwinfo': [ 'assoclist', 'info' ],
 	'hostapd.*': [ 'get_clients', 'get_status' ],
 	'umdns': [ 'hosts' ],
@@ -223,7 +225,7 @@ test('the plugin registers exactly the granted luci.vantage methods, writes conf
 	for (const g of Object.values(acl)) for (const kind of [ 'read', 'write' ])
 		for (const m of ((g[kind] || {}).ubus || {})[PLUGIN_OBJECT] || []) granted.add(m);
 	assert.deepEqual(methods, [ ...granted ].sort());
-	assert.deepEqual(methods, [ 'set_alias', 'thermal', 'wireless' ]);
+	assert.deepEqual(methods, [ 'set_alias', 'thermal', 'wired', 'wireless' ]);
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' wireless'));
 	assert.ok(pairs(acl[READ_GROUP].read.ubus).has(PLUGIN_OBJECT + ' thermal'));
 	assert.ok(pairs(acl[WRITE_GROUP].write.ubus).has(PLUGIN_OBJECT + ' set_alias'));
@@ -234,7 +236,7 @@ test('the plugin registers exactly the granted luci.vantage methods, writes conf
 /* The plugin's source rules, in one function so that the mutation test
    below can run them on altered copies; throws at the first breach. They
    read the text, so the names that hold a module, cursor or connection
-   (cursor, connect, uci, wl) may appear only where listed, comments
+   (cursor, connect, uci, wl, rtnl) may appear only where listed, comments
    included, and a reference that passes one of them on is a breach. */
 const REWORD = '; comments count too, so reword a comment that uses the word';
 function checkPluginSource(src) {
@@ -244,7 +246,8 @@ function checkPluginSource(src) {
 	assert.deepEqual([ ...src.matchAll(/^.*\bimport\b.*$/gm) ].map(m => m[0]), [
 		'import { cursor } from \'uci\';',
 		'import { connect } from \'ubus\';',
-		'import { lsdir, readfile } from \'fs\';'
+		'import { lsdir, readfile } from \'fs\';',
+		'import * as rtnl from \'rtnl\';'
 	]);
 	const word = /\b(system|popen|exec|require|loadfile|loadstring|include|render|writefile|unlink|global)\b/.exec(src);
 	assert.equal(word, null, word && `"${word[1]}" is banned in the plugin, as a word${REWORD}`);
@@ -274,6 +277,14 @@ function checkPluginSource(src) {
 	assert.deepEqual([ ...src.matchAll(/^.*\bconnect\b.*$/gm) ].map(m => m[0].trim()), [ 'import { connect } from \'ubus\';', 'let reply = connect()?.call(\'network.wireless\', \'status\');' ],
 		`"connect" may appear only on its import and the network.wireless status call${REWORD}`);
 	assert.equal([ ...src.matchAll(/\.\s*call\b/g) ].length, 1, 'one .call');
+
+	/* rtnl: one request, the read-only dump of the bridge forwarding
+	   database; otherwise only constants are read */
+	const dump = 'let fdb = rtnl.request(rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP, { family: rtnl.const.AF_BRIDGE });';
+	assert.deepEqual([ ...src.matchAll(/^.*\brtnl\.request\b.*$/gm) ].map(m => m[0].trim()), [ dump ], `"rtnl.request" may appear only as the one dump${REWORD}`);
+	const rest = src.replace(/^import \* as rtnl from 'rtnl';$/m, '').replace(dump, '');
+	for (const m of rest.matchAll(/\brtnl\b(?:\.const\.(\w+))?/g))
+		assert.ok([ 'NUD_PERMANENT', 'NUD_NOARP', 'NTF_SELF' ].includes(m[1]), `"${m[0]}": "rtnl" may appear only as rtnl.const.NUD_PERMANENT, NUD_NOARP or NTF_SELF${REWORD}`);
 }
 
 test('the plugin source rules catch writes, other configs and calls, and names passed on', () => {
@@ -296,7 +307,11 @@ test('the plugin source rules catch writes, other configs and calls, and names p
 		'ubus call on a computed object': add('let o = \'file\'; connect()?.call(o, \'write\', {});'),
 		'process by reference': add('let s = system; s(\'reboot\');'),
 		'builtin call()': add('call(print, null, null, \'x\');'),
-		'builtin by name': add('global[\'sys\' + \'tem\'](\'reboot\');')
+		'builtin by name': add('global[\'sys\' + \'tem\'](\'reboot\');'),
+		'netlink write': plugin.replace('rtnl.const.RTM_GETNEIGH, rtnl.const.NLM_F_DUMP', 'rtnl.const.RTM_DELNEIGH, rtnl.const.NLM_F_DUMP'),
+		'second netlink request': add('rtnl.request(rtnl.const.RTM_NEWNEIGH, 0, {});'),
+		'rtnl by reference': add('let nl = rtnl;'),
+		'other rtnl member': add('let e = rtnl.error();')
 	};
 	for (const [ name, src ] of Object.entries(MUTANTS)) {
 		assert.notEqual(src, plugin, name + ': the mutation applies');

@@ -34,7 +34,7 @@ port in one click, finding anything by typing — not from their look.
 | Package | Contents | Depends |
 |---|---|---|
 | `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page | `+luci-base` |
-| `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, validated alias writes), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus` (all but rpcd-mod-iwinfo come with luci-base); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`) and hostapd's ubus objects are optional and degrade |
+| `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, validated alias writes), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl` (rpcd-mod-iwinfo, ucode-mod-fs and ucode-mod-rtnl beyond luci-base; Wi-Fi images already have rtnl, as wifi-scripts needs it); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`) and hostapd's ubus objects are optional and degrade |
 
 The theme is useful alone; the app works under any theme but is designed
 for Vantage. Names used everywhere: theme dir `vantage`, media URL
@@ -185,7 +185,16 @@ text around it so it looks the same size.
 - **Overview**: device card (model, firmware, uptime, CPU, memory, temp
   if available), uplink card (resolved uplink interface, address, rate),
   radios card (band, channel, width, tx power, utilisation, client count),
-  clients card (count by band, weakest signals), health score.
+  clients card (count by band, weakest signals), health score. The
+  Clients tile lists Wi-Fi stations or wired hosts, switched in its head
+  where a device has both, and folds its quick filters (bands, active,
+  weak signal, new; per port for wired hosts) into a menu at the end of
+  the search box, the one in force shown as a tag in the box. A wired
+  host alone on its port gets the port's link speed and traffic as its
+  own; hosts sharing a port (a switch or another access point behind it)
+  show the port as shared, with no speed or traffic of their own. The
+  network path adds a Wired branch, a node per port, for hosts downstream
+  of the device (not those on the uplink's port).
 - **Inspectors** (drawer or page, deep-linkable):
   client (MAC, host hint, IP, radio/SSID, signal history for the session,
   rates, inactive time), radio (channel, width, noise when real, clients),
@@ -304,7 +313,7 @@ text around it so it looks the same size.
 - ACL: three groups. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
-  getHostHints`, `luci.vantage wireless`, `umdns hosts`, `file read` of
+  getHostHints`, `luci.vantage wireless/thermal/wired`, `umdns hosts`, `file read` of
   `/proc/stat`, `uci get` for `vantage`; no `file.exec`.
   `luci-app-vantage-rdns` (read, optional): `network.rrdns lookup`, kept
   apart because its caller chooses the DNS server and port; the view
@@ -326,6 +335,12 @@ text around it so it looks the same size.
   interfaces that name their `ifname`, no run state and no `txpower`;
   the view then takes the radio as up when iwinfo answers for one of its
   interfaces, and trusts a configured EHT mode over iwinfo's.
+  `wired` returns the hosts the Linux bridges have learned on their ports
+  (MAC, port, bridge, VLAN, seconds since last heard), from one
+  read-only netlink dump of the forwarding database (`ucode-mod-rtnl`,
+  RTM_GETNEIGH for AF_BRIDGE): not the bridges' own addresses, the switch
+  drivers' copies or group addresses, at most 512. The bridge forgets a
+  host after about five minutes without traffic.
   `set_alias({mac, name, icon})`
   re-applies the view's rules on the device (unicast MAC, name of at most
   48 code points without control, bidi or invisible characters, icon from

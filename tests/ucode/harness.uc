@@ -3,9 +3,9 @@
 //
 //   ucode -L tests/ucode/stubs -D PLUGIN=<plugin> -D CASES=<cases.json> tests/ucode/harness.uc
 //
-// uci and ubus are the test doubles in stubs/. Arguments are checked the
-// way rpcd-mod-ucode does before a method runs (unknown name or wrong type:
-// UBUS_STATUS_INVALID_ARGUMENT). Prints one JSON array with
+// uci, ubus and rtnl are the test doubles in stubs/. Arguments are checked
+// the way rpcd-mod-ucode does before a method runs (unknown name or wrong
+// type: UBUS_STATUS_INVALID_ARGUMENT). Prints one JSON array with
 // { status, reply, sections, reverted } per case; sections are the
 // committed config (unchanged when nothing was committed).
 'use strict';
@@ -25,7 +25,7 @@ if (type(obj) != 'object')
 for (let c in cases) {
 	let orig = json(sprintf('%J', c.sections ?? []));
 
-	global.STUB = { sections: json(sprintf('%J', orig)), seq: 0, committed: false, reverted: false, fail_commit: !!c.fail_commit, ubus: c.ubus ?? {}, wireless: c.wireless_uci };
+	global.STUB = { sections: json(sprintf('%J', orig)), seq: 0, committed: false, reverted: false, fail_commit: !!c.fail_commit, ubus: c.ubus ?? {}, wireless: c.wireless_uci, fdb: c.fdb };
 
 	let m = obj[c.method], status = 0, reply = null;
 

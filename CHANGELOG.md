@@ -8,6 +8,15 @@ Each release ships both packages, `luci-theme-vantage` and
 
 ## Unreleased
 
+- **Dashboard: wired devices** (#62,
+  [@HyperdrivzZ](https://github.com/HyperdrivzZ)). The Clients tile now
+  lists the devices on Ethernet ports too, with a Wi-Fi/Wired switch
+  where a device has both: name, address, vendor, port, link speed and
+  live traffic for a device alone on its port, and when each was last
+  heard. Routers without Wi-Fi get the Clients tile for them, and the
+  network path shows a Wired branch with a node per port. The quick
+  filters moved into a menu at the end of the search box, so the tile
+  fits on a phone.
 - **Dashboard: Wi-Fi on firmware without netifd's wireless status** (#60,
   [@bakaranadnan-a11y](https://github.com/bakaranadnan-a11y)). Vendor
   drivers that bypass netifd, such as MediaTek's mtkwifi on GL.iNet

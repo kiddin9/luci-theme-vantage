@@ -85,6 +85,7 @@ function runShim(cases) {
 		if (!shim.argsOk(c.method, c.args)) return { status: 2, reply: null, sections: orig, reverted };
 		const reply = c.method === 'wireless'
 			? shim.wirelessReply((c.ubus || {})['network.wireless status'] ?? null, c.wireless_uci ?? null)
+			: c.method === 'wired' ? { hosts: shim.wired(c.fdb ?? null) }
 			: shim.setAlias(cursor, c.args || {});
 		return { status: 0, reply, sections: committed ? sections : orig, reverted };
 	});
@@ -186,6 +187,28 @@ const BOOLS = [
 	dev('r_no', '2g', '6', 'EHT20', { disabled: 'false' })
 ];
 
+/* the bridge forwarding database as ucode's rtnl dumps it (RTM_GETNEIGH,
+   AF_BRIDGE): learned hosts are kept, everything else is left out */
+const fdb = (lladdr, dev, extra) => Object.assign({ family: 7, dev, master: 'br-lan', lladdr, state: 0x02, flags: 0,
+	cacheinfo: { confirmed: 0, used: 0, updated: 1234, refcnt: 0 } }, extra);
+const FDB = [
+	fdb('00:00:5e:00:53:01', 'lan1'),
+	fdb('00:00:5e:00:53:02', 'lan2', { vlan: 10, cacheinfo: { updated: 30099 } }),
+	fdb('00:00:5e:00:53:03', 'lan2', { state: 0x40 }),                          /* static: never heard */
+	fdb('00:00:5E:00:53:04', 'phy2g-ap0', { vlan: 4095, cacheinfo: { updated: -5 } }),
+	fdb('00:00:5e:00:53:05', 'eth0', { master: 'br-guest', state: 0x04, cacheinfo: null }),
+	fdb('00:00:5e:00:53:10', 'lan1', { state: 0x80 }),                          /* the bridge's own */
+	fdb('00:00:5e:00:53:11', 'lan1', { master: null, flags: 0x02 }),           /* the switch's copy */
+	fdb('01:00:5e:90:10:01', 'lan1'),                                          /* a group address */
+	fdb('00:00:5e:00:53:12', 'lan1; reboot'),
+	fdb('00:00:5e:00:53:13', 'lan1', { master: 'br lan' }),
+	fdb('00:00:5e:00:53:14', 'a-port-name-too-long'),
+	fdb('00:00:5e:00:53:15', 'lan1', { state: true }),
+	fdb('not a mac', 'lan1'),
+	'junk', null, [ 'lan1' ]
+];
+const FDB_MANY = Array.from({ length: 600 }, (_, i) => fdb('02:00:5e:00:' + (i >> 8).toString(16).padStart(2, '0') + ':' + (i & 255).toString(16).padStart(2, '0'), 'lan1'));
+
 const BEHAVIOUR = [
 	/* add, one section per MAC, icon handling */
 	{ method: 'set_alias', args: { mac: '00-00-5E-00-53-21', name: '  TV  ', icon: 'tv' } },
@@ -221,7 +244,12 @@ const BEHAVIOUR = [
 	   wins whenever it answers */
 	{ method: 'wireless', ubus: {}, wireless_uci: MTK },
 	{ method: 'wireless', ubus: { 'network.wireless status': WIRELESS }, wireless_uci: MTK },
-	{ method: 'wireless', ubus: {}, wireless_uci: BOOLS }
+	{ method: 'wireless', ubus: {}, wireless_uci: BOOLS },
+	/* wired: the bridges' learned hosts */
+	{ method: 'wired', fdb: FDB },
+	{ method: 'wired', fdb: null },
+	{ method: 'wired', fdb: FDB_MANY },
+	{ method: 'wired', args: { port: 'lan1' } }
 ];
 
 const NAME_CASES = NAMES.map(([ n ]) => ({ method: 'set_alias', args: { mac: MAC, name: n } }));
@@ -339,6 +367,20 @@ test('stand-in: disabled reads like config_get_bool, and a disabled section clai
 	assert.deepEqual(m.radios.map(x => [ x.id, x.disabled ]), [ [ 'r_no', false ], [ 'r_on', false ], [ 'r_true', true ], [ 'r_yes', true ] ]);
 });
 
+test('stand-in: wired keeps the hosts the bridges learned, with port, VLAN and seconds since heard', () => {
+	const [ r, none, many, bad ] = runShim(BEHAVIOUR.slice(27, 31));
+	assert.deepEqual(r.reply.hosts, [
+		{ mac: '00:00:5e:00:53:01', port: 'lan1', bridge: 'br-lan', vlan: null, seen: 12 },
+		{ mac: '00:00:5e:00:53:02', port: 'lan2', bridge: 'br-lan', vlan: 10, seen: 300 },
+		{ mac: '00:00:5e:00:53:03', port: 'lan2', bridge: 'br-lan', vlan: null, seen: null },
+		{ mac: '00:00:5e:00:53:04', port: 'phy2g-ap0', bridge: 'br-lan', vlan: null, seen: null },
+		{ mac: '00:00:5e:00:53:05', port: 'eth0', bridge: 'br-guest', vlan: null, seen: null }
+	]);
+	assert.deepEqual(none.reply, { hosts: [] });
+	assert.equal(many.reply.hosts.length, 512);
+	assert.equal(bad.status, 2);
+});
+
 test('stand-in: the replay falls back to the store\'s uci wireless only when network.wireless is missing', () => {
 	const values = {};
 	MTK.forEach((s, i) => { values[s['.name']] = Object.assign({ '.index': MTK.length - i }, s); });
@@ -433,7 +475,7 @@ test('ucode plugin: same results as the stand-in for every case', { skip: NO_UCO
 		assert.deepEqual(norm(u[i]), norm(s[i]), `case ${i}: ${JSON.stringify(ALL[i]).slice(0, 160)}`);
 });
 
-test('ucode plugin: the test doubles stop a copy that writes wireless, reads another config or calls another object', { skip: NO_UCODE }, () => {
+test('ucode plugin: the test doubles stop a copy that writes wireless, reads another config, calls another object or writes over netlink', { skip: NO_UCODE }, () => {
 	const src = fs.readFileSync(PLUGIN, 'utf8'), at = '\tlet wl = cursor();\n';
 	assert.ok(src.includes(at), 'insertion point');
 	const MUTANTS = {
@@ -441,7 +483,8 @@ test('ucode plugin: the test doubles stop a copy that writes wireless, reads ano
 		'commit wireless': 'wl.commit(WIRELESS);',
 		'read network': "wl.load('network');",
 		'cursor on another directory': "cursor('/etc/init.d');",
-		'another ubus call': "connect().call('file', 'read', { path: '/etc/shadow' });"
+		'another ubus call': "connect().call('file', 'read', { path: '/etc/shadow' });",
+		'a netlink write': 'rtnl.request(rtnl.const.RTM_DELNEIGH, 0, { family: rtnl.const.AF_BRIDGE });'
 	};
 	const run = [ BEHAVIOUR[24], BEHAVIOUR[0] ];      /* the config fallback and an alias write */
 	const ok = spawnUcode(run, src);
@@ -449,7 +492,7 @@ test('ucode plugin: the test doubles stop a copy that writes wireless, reads ano
 	for (const [ name, code ] of Object.entries(MUTANTS)) {
 		const r = spawnUcode(run, src.replace(at, at + '\t' + code + '\n'));
 		assert.notEqual(r.status, 0, name);
-		assert.match(r.stderr, /(uci|ubus) stub: /, name);
+		assert.match(r.stderr, /(uci|ubus|rtnl) stub: /, name);
 	}
 });
 
