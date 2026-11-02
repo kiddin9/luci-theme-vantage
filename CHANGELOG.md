@@ -6,7 +6,7 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
-## Unreleased
+## 1.0.13 - 2026-11-02
 
 - **Dashboard: a port's traffic on its node** (#67,
   [@bakaranadnan-a11y](https://github.com/bakaranadnan-a11y)). Each port

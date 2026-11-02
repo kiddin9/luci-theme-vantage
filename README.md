@@ -64,7 +64,8 @@ without the app.
   link rate, Wi-Fi generation, live traffic and an experience score with
   its reason; filters by band, activity, weak signal and new clients.
   Wired devices too, from the bridge's table: port, link speed, traffic
-  when a device has its port to itself, and when each was last heard
+  when a device has its port to itself (else the port's total), the ports
+  of a swconfig switch behind a VLAN port, and when each was last heard
 - Client inspector: signal history, link rates, capabilities, traffic,
   retries; rename a device in place
 - Top talkers, wireless networks, system tile (CPU per core, memory,
