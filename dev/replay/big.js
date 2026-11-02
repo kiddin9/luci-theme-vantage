@@ -1,8 +1,10 @@
 'use strict';
 /* A bigger access point (--big): the recorded device served as a
-   quad-radio Wi-Fi 7 access point with ten networks, 74 stations and five
+   quad-radio Wi-Fi 7 access point with ten networks, 74 stations and six
    wired ports, one with a switch and one with a second access point
-   behind it, to see the dashboard with a deep path and long lists.
+   behind it, and eth1.1, VLAN 1 of a swconfig switch (switch0, three of
+   its four ports with a link), to see the dashboard with a deep path and
+   long lists.
 
    Replies are rewritten after the store answers (whatever it answered):
      luci.vantage wireless,   SYNTHETIC radios: 2.4 GHz (Wi-Fi 6), 5 GHz
@@ -12,10 +14,12 @@
                               the clock; airtime per radio
      network.device status    the networks' and ports' counters (sums of
                               their stations' and hosts'); eth0 carries
-                              most of it to the gateway; lan1..lan5 are
-                              bridge members of br-lan
-     luci.vantage wired       SYNTHETIC hosts on lan1..lan5, and the
-                              gateway on eth0
+                              most of it to the gateway; lan1..lan5 and
+                              eth1.1 are bridge members of br-lan
+     luci.vantage wired       SYNTHETIC hosts on lan1..lan5 and eth1.1,
+                              the gateway on eth0, and switch0's ports
+                              behind eth1.1 (switches)
+     luci getSwconfigPortState  switch0's link state
      luci-rpc getHostHints    names and addresses of all of them
    The recorded LAN (the interface with the default route) gives the
    addresses their first three octets and the gateway's; documentation
@@ -97,8 +101,16 @@ const STATIONS = {
 /* wired ports of br-lan, after eth0 (the uplink) */
 const PORTS = [
 	{ dev: 'lan1', speed: '1000F' }, { dev: 'lan2', speed: '2500F' }, { dev: 'lan3', speed: '1000F' },
-	{ dev: 'lan4', speed: '100F' }, { dev: 'lan5', speed: '2500F' }
+	{ dev: 'lan4', speed: '100F' }, { dev: 'lan5', speed: '2500F' },
+	/* a VLAN on a swconfig switch: its speed is the CPU port's */
+	{ dev: 'eth1.1', speed: '10000F', devtype: 'vlan' }
 ];
+
+/* switch0 as luci.vantage wired reports it behind eth1.1, and its link
+   state as LuCI's getSwconfigPortState answers (port 5: the CPU's) */
+const SWITCH = { name: 'switch0', vlan: 1, ports: [ 0, 1, 2, 3 ].map(n => ({ num: n, role: 'lan', index: n + 1 })) };
+const SWITCH_STATE = [ [ 0, false, 0 ], [ 1, true, 2500 ], [ 2, true, 1000 ], [ 3, true, 1000 ], [ 4, false, 0 ], [ 5, true, 10000 ] ]
+	.map(p => ({ port: p[0], duplex: p[1], speed: p[2], link: p[1], auto: p[1] && p[0] !== 5, rxflow: false, txflow: false }));
 
 /* [ port, name, bit/s to it, bit/s from it ]: lan3 has a switch behind
    it, lan5 a second access point */
@@ -108,7 +120,8 @@ const WIRED = [
 	[ 'lan3', 'office-switch', 1e4, 1e4 ], [ 'lan3', 'laser-printer', 2e5, 2e4 ], [ 'lan3', 'voip-base', 9e4, 9e4 ],
 	[ 'lan3', 'nvr', 1e5, 8e6 ], [ 'lan3', 'game-console-2', 25e6, 1e6 ], [ 'lan3', 'zigbee-hub', 1e4, 1e4 ], [ 'lan3', null, 3e5, 4e4 ],
 	[ 'lan4', 'ups-monitor', 2e3, 2e3 ],
-	[ 'lan5', 'ap-upstairs', 5e4, 5e4 ], [ 'lan5', 'upstairs-tv', 22e6, 3e5 ], [ 'lan5', null, 2e6, 3e5 ]
+	[ 'lan5', 'ap-upstairs', 5e4, 5e4 ], [ 'lan5', 'upstairs-tv', 22e6, 3e5 ], [ 'lan5', null, 2e6, 3e5 ],
+	[ 'eth1.1', 'media-server', 40e6, 2e6 ], [ 'eth1.1', 'printer-upstairs', 1e4, 1e4 ], [ 'eth1.1', 'tv-box', 15e6, 2e5 ]
 ];
 
 /* the share of station and host traffic that crosses the uplink (the rest
@@ -261,7 +274,7 @@ function devices(recorded, t) {
 	});
 	PORTS.forEach(p => {
 		const s = sumBytes(HOSTS.filter(h => h.port === p.dev), t);
-		out[p.dev] = { external: false, present: true, type: 'Network device', devtype: 'ethernet', up: true, carrier: true, speed: p.speed, statistics: counters(s[0], s[1]) };
+		out[p.dev] = { external: false, present: true, type: 'Network device', devtype: p.devtype || 'ethernet', up: true, carrier: true, speed: p.speed, statistics: counters(s[0], s[1]) };
 	});
 	/* the uplink carries most of the stations' and hosts' traffic: from
 	   the gateway what goes to them, to it what they send */
@@ -314,7 +327,8 @@ function transform(object, method, args, reply) {
 		if (method === 'get_clients') return ok(hapdClients(hm[1], t));
 		if (method === 'get_status') return ok(hapdStatus(hm[1], t));
 	}
-	if (object === 'luci.vantage' && method === 'wired') return ok({ hosts: fdb(t) });
+	if (object === 'luci.vantage' && method === 'wired') return ok({ hosts: fdb(t), switches: { 'eth1.1': SWITCH } });
+	if (object === 'luci' && method === 'getSwconfigPortState' && args && args.switch === SWITCH.name) return ok({ result: SWITCH_STATE });
 	if (object === 'network.interface' && method === 'dump' && data && Array.isArray(data.interface)) { learn(data); return reply; }
 	if (object === 'luci-rpc' && method === 'getHostHints') return ok(hints(data && typeof data === 'object' ? data : {}));
 	if (object === 'network.device' && method === 'status' && !(args && args.name))
@@ -322,4 +336,4 @@ function transform(object, method, args, reply) {
 	return reply;
 }
 
-module.exports = { transform, RADIOS, NETS, STA, HOSTS, PORTS };
+module.exports = { transform, RADIOS, NETS, STA, HOSTS, PORTS, SWITCH };

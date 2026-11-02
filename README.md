@@ -201,8 +201,8 @@ node security-tests/test_acl_policy.js
 ## Security
 
 - **Read-only dashboard.** The app's rpcd ACL grants read methods only
-  (system, network, iwinfo, hostapd status, host hints, mDNS, `/proc/stat`)
-  and no `file.exec`. Wireless configuration comes from the app's own rpcd
+  (system, network, iwinfo, hostapd status, host hints, mDNS, `/proc/stat`,
+  and LuCI's swconfig switch port state) and no `file.exec`. Wireless configuration comes from the app's own rpcd
   ucode plugin (`luci.vantage wireless`), which leaves out Wi-Fi keys,
   SAE passwords and RADIUS secrets. Reverse DNS (`network.rrdns lookup`,
   which lets its holder aim the device's DNS queries at any server) is a

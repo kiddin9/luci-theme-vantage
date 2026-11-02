@@ -217,9 +217,11 @@ documentation addresses and growing counters are added. Combine it with
 Serves the recorded device as a quad-radio Wi-Fi 7 access point, to see
 the dashboard with a deep network path and long lists (`big.js`): radios
 on 2.4 GHz (Wi-Fi 6), 5 GHz low and high and 6 GHz (320 MHz), ten
-networks, 74 stations with names, signals and traffic, and five wired
-ports with 13 hosts (a switch behind `lan3`, a second access point
-behind `lan5`) plus the gateway on `eth0`. Counters grow with the clock
+networks, 74 stations with names, signals and traffic, and six wired
+ports with 16 hosts (a switch behind `lan3`, a second access point
+behind `lan5`, and `eth1.1`, VLAN 1 of a swconfig switch `switch0` with
+three of its four ports linked, as `luci getSwconfigPortState` answers)
+plus the gateway on `eth0`. Counters grow with the clock
 and add up (a network's are its stations', `eth0` carries most of the
 total). Addresses take the recorded LAN's first three octets, so use it
 with `--demo`; MACs are documentation values. Only the dashboard's calls

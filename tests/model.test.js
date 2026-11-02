@@ -532,3 +532,50 @@ test('build: the uplink port through a bridge VLAN, an IPv6 gateway, and a port 
 	const dsa = { 'br-lan': { type: 'bridge', devtype: 'bridge', 'bridge-members': [ 'eth1', 'lan1' ] }, eth1: { devtype: 'ethernet', carrier: false }, lan1: { devtype: 'dsa', carrier: true } };
 	assert.equal(model.resolveUplink(v6, dsa).dev, 'lan1');
 });
+
+test('switchOf: the switch ports behind a VLAN port, with their links once the switch has answered', () => {
+	const lan = n => ({ num: n, role: 'lan', index: n + 1 });
+	const map = { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ lan(0), lan(1), lan(2), lan(3) ] }, 'eth1.2': { name: 'switch0', vlan: 2, ports: [ { num: 4, role: 'wan', index: null } ] } };
+	const port = (n, link, speed) => ({ port: n, link, speed, duplex: link, auto: link, rxflow: false, txflow: false });
+	const state = { switch0: [ port(0, false, 0), port(1, true, 2500), port(2, true, 1000), port(3, true, 1000), port(4, false, 0), port(5, true, 10000) ] };
+	const sw = model.switchOf(map, state, 'eth1.1');
+	assert.deepEqual([ sw.name, sw.vlan, sw.up ], [ 'switch0', 1, 3 ]);
+	assert.deepEqual(sw.ports.map(p => [ p.label, p.link, p.speed && p.speed.mbps ]), [ [ 'LAN 1', false, null ], [ 'LAN 2', true, 2500 ], [ 'LAN 3', true, 1000 ], [ 'LAN 4', true, 1000 ] ]);
+	assert.deepEqual(model.switchOf(map, state, 'eth1.2').ports.map(p => p.label), [ 'Port 4' ], 'a role without a number: the switch\'s');
+	/* board.json without numbers (GL.iNet): four "LAN" would not tell them apart */
+	const plain = { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ 0, 1, 2, 3 ].map(n => ({ num: n, role: 'lan', index: null })) } };
+	assert.deepEqual(model.switchOf(plain, state, 'eth1.1').ports.map(p => p.label), [ 'Port 0', 'Port 1', 'Port 2', 'Port 3' ]);
+	/* not answered yet: links unknown, not down */
+	const quiet = model.switchOf(map, {}, 'eth1.1');
+	assert.deepEqual([ quiet.up, quiet.ports[1].link ], [ null, null ]);
+	assert.deepEqual([ model.switchOf(map, { switch0: [] }, 'eth1.1').up ], [ null ], 'an empty answer: not known, not down');
+	const odd = { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ { num: 1, role: 'lan x', index: 2 }, { num: 64, role: 'lan', index: 1 }, { num: -1 } ] } };
+	assert.deepEqual(model.switchOf(odd, state, 'eth1.1').ports.map(p => p.label), [ 'Port 1' ], 'no role from an odd string; ports 0-63 only');
+	const down = model.switchOf(map, { switch0: [ { port: 1, link: 'yes', speed: 1000 }, { port: 2, link: true, speed: 0 } ] }, 'eth1.1');
+	assert.deepEqual(down.ports.slice(1, 3).map(p => [ p.link, p.speed ]), [ [ false, null ], [ true, null ] ], 'link only when true; no speed of 0');
+	assert.deepEqual(model.switchOf({ x: { name: 'switch0', vlan: 3, ports: [ { num: 6 } ] } }, state, 'x').ports.map(p => p.label), [ 'Port 6' ]);
+	/* anything else: no switch */
+	for (const [ m, p ] of [ [ map, 'lan1' ], [ map, '__proto__' ], [ map, 'constructor' ], [ null, 'eth1.1' ], [ { 'eth1.1': { name: '../x', vlan: 1, ports: [] } }, 'eth1.1' ], [ { 'eth1.1': { name: 'switch0', vlan: '1' } }, 'eth1.1' ] ])
+		assert.equal(model.switchOf(m, state, p), null, JSON.stringify(p));
+});
+
+test('build: a host behind a switch VLAN has a switch port\'s link, not the CPU port\'s', () => {
+	const lan = n => ({ num: n, role: 'lan', index: n + 1 });
+	const switches = { 'eth1.1': { name: 'switch0', vlan: 1, ports: [ lan(0), lan(1), lan(2), lan(3) ] } };
+	const port = (n, link, speed) => ({ port: n, link, speed, duplex: true });
+	const build = (state, fdb) => model.build({
+		ifaces: [ { interface: 'lan', up: true, l3_device: 'br-lan', device: 'br-lan', 'ipv4-address': [ { address: '192.0.2.1', mask: 24 } ], route: [] } ],
+		devs: { 'eth1.1': { speed: '10000F', carrier: true }, lan5: { speed: '1000F', carrier: true } },
+		switches, switchState: state, fdb: fdb || [
+			{ mac: '00:00:5e:00:53:11', port: 'eth1.1', bridge: 'br-lan', seen: 1 },
+			{ mac: '00:00:5e:00:53:12', port: 'lan5', bridge: 'br-lan', seen: 1 }
+		]
+	}).wiredHosts;
+	const one = build({ switch0: [ port(0, false, 0), port(1, true, 2500), port(5, true, 10000) ] });
+	assert.deepEqual(one.map(h => [ h.port, h.speed && h.speed.mbps, h.carrier, h.switchPort, !!h.switch ]), [ [ 'eth1.1', 2500, true, 'LAN 2', true ], [ 'lan5', 1000, true, null, false ] ],
+		'one switch port with a link: the host is behind it');
+	const three = build({ switch0: [ port(1, true, 2500), port(2, true, 1000), port(3, true, 1000) ] });
+	assert.deepEqual([ three[0].speed, three[0].carrier, three[0].switchPort, three[0].switch.up ], [ null, true, null, 3 ], 'several: which one is not known');
+	assert.deepEqual([ build({ switch0: [ port(1, false, 0) ] })[0].carrier ], [ false ], 'none with a link: down');
+	assert.deepEqual([ build({})[0].speed, build({})[0].carrier ], [ null, true ], 'not answered: no speed, the port\'s carrier');
+});

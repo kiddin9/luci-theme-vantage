@@ -6,6 +6,24 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
+## Unreleased
+
+- **Dashboard: a port's traffic on its node** (#67,
+  [@bakaranadnan-a11y](https://github.com/bakaranadnan-a11y)). Each port
+  node in the network path's Wired branch shows the port's live traffic,
+  and a device on a shared port (a switch or another access point behind
+  it) shows the port's total in its details, under "Not counted per
+  device". It stays the port's: no device gets a share of it.
+- **Dashboard: the switch ports behind a swconfig VLAN** (#67). Where a
+  port is a VLAN on a swconfig switch (`eth1.1` on routers with a
+  hardware switch), a device's details list the VLAN's switch ports and
+  their links, from LuCI's own switch port state, asked at most every
+  30 seconds. Ports are named as swconfig numbers them ("Port 1") unless
+  the board description numbers them per role ("LAN 2"). When only one of them has a link, the devices behind it get
+  that port's speed instead of the switch's link to the CPU. Which port
+  each device is on stays unknown otherwise. The app's read permission
+  gains `luci getSwconfigPortState`.
+
 ## 1.0.12 - 2026-11-01
 
 - **Dashboard: an animated network path.** The path's dot grid carries

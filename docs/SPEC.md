@@ -192,9 +192,16 @@ text around it so it looks the same size.
   the search box, the one in force shown as a tag in the box. A wired
   host alone on its port gets the port's link speed and traffic as its
   own; hosts sharing a port (a switch or another access point behind it)
-  show the port as shared, with no speed or traffic of their own. The
-  network path adds a Wired branch, a node per port, for hosts downstream
-  of the device (not those on the uplink's port).
+  show the port as shared, with no speed or traffic of their own; their
+  details give the port's total, labelled as the port's. A port that is
+  a VLAN on a swconfig switch (`eth1.1`; the plugin maps it from
+  `/etc/board.json` and the `switch_vlan` sections, or board.json's roles
+  for a switch those give no VLAN) lists the VLAN's switch ports with
+  their links ("LAN 2" where board.json numbers them, else swconfig's
+  "Port 1"); with one of them linked, its hosts get
+  that port's speed instead of the CPU port's. The network
+  path adds a Wired branch, a node per port with the port's traffic, for
+  hosts downstream of the device (not those on the uplink's port).
 - **Inspectors** (drawer or page, deep-linkable):
   client (MAC, host hint, IP, radio/SSID, signal history for the session,
   rates, inactive time), radio (channel, width, noise when real, clients),
@@ -327,7 +334,11 @@ text around it so it looks the same size.
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
   getHostHints`, `luci.vantage wireless/thermal/wired`, `umdns hosts`, `file read` of
-  `/proc/stat`, `uci get` for `vantage`; no `file.exec`.
+  `/proc/stat`, `uci get` for `vantage`, and LuCI's own `luci
+  getSwconfigPortState` (the link state of a swconfig switch's ports: LuCI
+  runs `swconfig dev <switch> show`, the switch name quoted; the view asks
+  at most every 30 s, and only for a switch with hosts behind it); no
+  `file.exec`.
   `luci-app-vantage-rdns` (read, optional): `network.rrdns lookup`, kept
   apart because its caller chooses the DNS server and port; the view
   checks the grant and skips reverse DNS without it.

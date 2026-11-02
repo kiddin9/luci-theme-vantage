@@ -123,7 +123,7 @@ test('synthetic: three documentation hosts on the recorded bridge\'s wired membe
 	finally { console.error = orig; }
 });
 
-test('--big: four radios, ten networks, 74 stations and five ports, counters that add up', () => {
+test('--big: four radios, ten networks, 74 stations and six ports, one a switch VLAN; counters that add up', () => {
 	const big = require('../dev/replay/big');
 	const ok = data => ({ result: [ 0, data ] });
 	const nf = { result: [ 4 ] };
@@ -159,14 +159,20 @@ test('--big: four radios, ten networks, 74 stations and five ports, counters tha
 	const tx = sta.reduce((a, s) => a + s.tx.bytes, 0);
 	assert.ok(Math.abs(devs['phy1-ap0'].statistics.tx_bytes - tx) <= tx * 1e-3, 'the network sends what its stations get');
 	assert.equal(devs['br-lan']['bridge-members'][0], 'eth0', 'the uplink port first');
-	assert.deepEqual(big.PORTS.map(p => devs[p.dev].speed), [ '1000F', '2500F', '1000F', '100F', '2500F' ]);
+	assert.deepEqual(big.PORTS.map(p => devs[p.dev].speed), [ '1000F', '2500F', '1000F', '100F', '2500F', '10000F' ]);
+	assert.equal(devs['eth1.1'].devtype, 'vlan');
 	const later = big.transform('network.device', 'status', {}, ok({})).result[1];
 	assert.ok(later.eth0.statistics.rx_bytes >= devs.eth0.statistics.rx_bytes);
 	assert.ok(Number.isSafeInteger(later.eth0.statistics.rx_bytes));
 	/* hosts on the ports and the gateway on eth0, documentation values only */
-	const hosts = big.transform('luci.vantage', 'wired', {}, ok({ hosts: [] })).result[1].hosts;
-	assert.equal(hosts.length, 14);
-	assert.deepEqual([ ...new Set(hosts.map(h => h.port)) ].sort(), [ 'eth0', 'lan1', 'lan2', 'lan3', 'lan4', 'lan5' ]);
+	const wiredReply = big.transform('luci.vantage', 'wired', {}, ok({ hosts: [] })).result[1], hosts = wiredReply.hosts;
+	assert.equal(hosts.length, 17);
+	assert.deepEqual([ ...new Set(hosts.map(h => h.port)) ].sort(), [ 'eth0', 'eth1.1', 'lan1', 'lan2', 'lan3', 'lan4', 'lan5' ]);
+	/* switch0 behind eth1.1, its link state from LuCI's call */
+	assert.deepEqual(wiredReply.switches, { 'eth1.1': big.SWITCH });
+	const state = big.transform('luci', 'getSwconfigPortState', { switch: 'switch0' }, nf).result[1].result;
+	assert.deepEqual(state.filter(p => p.link).map(p => [ p.port, p.speed ]), [ [ 1, 2500 ], [ 2, 1000 ], [ 3, 1000 ], [ 5, 10000 ] ]);
+	assert.deepEqual(big.transform('luci', 'getSwconfigPortState', { switch: 'switch1' }, nf), nf);
 	const hints = big.transform('luci-rpc', 'getHostHints', {}, ok({})).result[1];
 	assert.deepEqual(hints['00:00:5E:00:53:FE'], { name: 'router', ipaddrs: [ '192.0.2.1' ], ip6addrs: [] });
 	const macs = Object.keys(hints).concat(hosts.map(h => h.mac), sta.map(s => s.mac));

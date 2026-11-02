@@ -851,8 +851,10 @@ Then reload the page. To remove Vantage entirely, see
 ## Security notes
 
 - **What the dashboard may do.** Its rpcd permissions (ACL) are read-only:
-  system, network, radio and station status, host hints, mDNS and
-  `/proc/stat`. It cannot run commands. Its only write permission, in a
+  system, network, radio and station status, host hints, mDNS,
+  `/proc/stat` and the link state of a swconfig switch's ports. It cannot
+  run commands; for that link state LuCI's own method runs `swconfig dev
+  <switch> show`, read-only. Its only write permission, in a
   separate group (`luci-app-vantage-names`), is the plugin method
   `luci.vantage set_alias`, which checks each name on the device and
   writes nothing but `/etc/config/vantage` (at most 512 names). Details

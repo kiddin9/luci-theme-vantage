@@ -1,7 +1,9 @@
 // Test double for ucode's uci module (tests/plugin.test.js): config
 // vantage held in global STUB = { sections: [ ... ], seq, committed,
-// fail_commit, reverted }, and a read-only config wireless in
-// STUB.wireless (absent when null). Fails closed: a cursor made with
+// fail_commit, reverted }, and read-only configs wireless and network in
+// STUB.wireless and STUB.network (absent when null; network 'no load',
+// the harness's default when a case gives none: the run stops if it is
+// loaded at all). Fails closed: a cursor made with
 // arguments, a read of any other config, or a change to any config but
 // vantage stops the run, so a plugin that tries one fails its tests.
 'use strict';
@@ -20,7 +22,7 @@ function find(sid) {
 }
 
 function sections(conf) {
-	return (conf == 'wireless') ? (global.STUB.wireless ?? []) : global.STUB.sections;
+	return (conf == 'vantage') ? global.STUB.sections : (global.STUB[conf] ?? []);
 }
 
 function cursor(...args) {
@@ -29,12 +31,16 @@ function cursor(...args) {
 
 	return {
 		load: function(conf) {
-			only(conf, [ 'vantage', 'wireless' ], 'load');
-			return conf == 'vantage' || global.STUB.wireless != null;
+			only(conf, [ 'vantage', 'wireless', 'network' ], 'load');
+
+			if (conf == 'network' && global.STUB.network == 'no load')
+				die('uci stub: config network loaded where it may not be');
+
+			return conf == 'vantage' || global.STUB[conf] != null;
 		},
 
 		foreach: function(conf, stype, fn) {
-			only(conf, [ 'vantage', 'wireless' ], 'foreach');
+			only(conf, [ 'vantage', 'wireless', 'network' ], 'foreach');
 
 			for (let s in [ ...sections(conf) ])
 				if (!stype || s['.type'] == stype)

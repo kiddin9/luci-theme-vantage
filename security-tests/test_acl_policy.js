@@ -26,10 +26,13 @@
  * - the plugin (root/usr/share/rpcd/ucode/luci.vantage) registers exactly
  *   the luci.vantage methods the ACL grants, opens config `vantage`, and
  *   only loads and walks config `wireless` (luci.vantage wireless without
- *   netifd's network.wireless object; same reduced reply, no keys), and
+ *   netifd's network.wireless object; same reduced reply, no keys) and
+ *   the switch_vlan sections of config `network`, reading their device,
+ *   vlan, vid and ports only (luci.vantage wired, behind a switch), and
  *   imports nothing but uci, ubus, fs's lsdir and readfile, which it
- *   calls on paths under /sys/class/thermal only (luci.vantage
- *   thermal), and rtnl for one read-only dump of the bridge forwarding
+ *   calls on paths under /sys/class/thermal (luci.vantage thermal), on
+ *   the bridges' brforward and on /etc/board.json only, and rtnl for one
+ *   read-only dump of the bridge forwarding
  *   database (luci.vantage wired); no other file access, no other
  *   netlink request, no process execution, and no module, cursor or
  *   connection passed on under another name; altered copies of the
@@ -82,6 +85,8 @@ const READ_UBUS = {
 	'network.interface': [ 'dump' ],
 	'network.device': [ 'status' ],
 	'luci-rpc': [ 'getHostHints' ],
+	/* LuCI's own: swconfig dev <switch> show, the switch name quoted */
+	'luci': [ 'getSwconfigPortState' ],
 	'luci.vantage': [ 'thermal', 'wired', 'wireless' ],
 	'iwinfo': [ 'assoclist', 'info' ],
 	'hostapd.*': [ 'get_clients', 'get_status' ],
@@ -252,19 +257,29 @@ function checkPluginSource(src) {
 	const word = /\b(system|popen|exec|require|loadfile|loadstring|include|render|writefile|unlink|global)\b/.exec(src);
 	assert.equal(word, null, word && `"${word[1]}" is banned in the plugin, as a word${REWORD}`);
 	assert.doesNotMatch(src, /(^|[^.\w])call\s*\(/m, 'the call() builtin is banned in the plugin');
-	/* fs: only the thermal zones under /sys/class/thermal, and the
-	   bridges' forwarding counts (brforward) under /sys/class/net */
+	/* fs: only the thermal zones under /sys/class/thermal, the
+	   bridges' forwarding counts (brforward) under /sys/class/net and
+	   the board description */
 	assert.match(src, /^const THERMAL = '\/sys\/class\/thermal';$/m);
 	assert.match(src, /^const NET = '\/sys\/class\/net';$/m);
+	assert.match(src, /^const BOARD = '\/etc\/board\.json';$/m);
 	const fsCalls = [ ...src.matchAll(/\b(lsdir|readfile)\(([^,)]*)/g) ].map(m => m[1] + '(' + m[2]);
 	assert.ok(fsCalls.length >= 5, 'found the fs calls');
-	for (const c of fsCalls) assert.match(c, /^(lsdir\(THERMAL$|readfile\(THERMAL \+ '\/' \+ n \+ '\/(temp|type)'|lsdir\(NET$|readfile\(NET \+ '\/' \+ n \+ '\/brforward')$/, c);
+	for (const c of fsCalls) assert.match(c, /^(lsdir\(THERMAL$|readfile\(THERMAL \+ '\/' \+ n \+ '\/(temp|type)'|lsdir\(NET$|readfile\(NET \+ '\/' \+ n \+ '\/brforward'|readfile\(BOARD)$/, c);
+	/* each path constant only in its definition and those calls, so no
+	   `let BOARD = ...` can shadow one; board.json read up to BOARD_MAX */
+	for (const [ name, uses ] of [ [ 'THERMAL', 4 ], [ 'NET', 3 ], [ 'BOARD', 2 ] ])
+		assert.equal([ ...src.matchAll(new RegExp('\\b' + name + '\\b', 'g')) ].length, uses, `${name}: its definition and its ${uses - 1} fs calls${REWORD}`);
+	assert.match(src, /^const BOARD_MAX = 65536; /m);
+	assert.match(src, /\breadfile\(BOARD, BOARD_MAX\)/, 'board.json read with its bound');
 
-	/* uci: two cursors made without arguments, `uci` on CONFIG ('vantage')
-	   and `wl`, which only loads and walks WIRELESS ('wireless'); every
-	   other mention of either name is one of those calls */
-	assert.deepEqual([ ...src.matchAll(/^.*\bcursor\b.*$/gm) ].map(m => m[0].trim()), [ 'import { cursor } from \'uci\';', 'let wl = cursor();', 'let uci = cursor();' ],
-		`"cursor" may appear only on its import and the two cursor() lines${REWORD}`);
+	/* uci: three cursors made without arguments, `uci` on CONFIG
+	   ('vantage'), `wl`, which only loads and walks WIRELESS ('wireless'),
+	   and `nw`, which only loads NETWORK ('network') and walks its
+	   switch_vlan sections; every other mention of these names is one of
+	   those calls */
+	assert.deepEqual([ ...src.matchAll(/^.*\bcursor\b.*$/gm) ].map(m => m[0].trim()), [ 'import { cursor } from \'uci\';', 'let wl = cursor();', 'let uci = cursor();', 'let nw = cursor();' ],
+		`"cursor" may appear only on its import and the three cursor() lines${REWORD}`);
 	const body = src.replace(/^.*\bcursor\b.*$/gm, '');
 	assert.match(src, /^const CONFIG = 'vantage';$/m);
 	const calls = [ ...body.matchAll(/\buci\b(?:\.(\w+)\(([^,)]*))?/g) ];
@@ -274,6 +289,17 @@ function checkPluginSource(src) {
 	assert.deepEqual([ ...body.matchAll(/\bwl\b(?:\.(\w+)\(([^,)]*))?/g) ].map(m => m[0]), [ 'wl.load(WIRELESS', 'wl.foreach(WIRELESS', 'wl.foreach(WIRELESS' ],
 		`"wl" may appear only as wl.load(WIRELESS) and two wl.foreach(WIRELESS, ...)${REWORD}`);
 	assert.equal([ ...src.matchAll(/\bWIRELESS\b/g) ].length, 4, 'WIRELESS: its definition and the three wl calls');
+	assert.match(src, /^const NETWORK = 'network';/m);
+	assert.deepEqual([ ...body.matchAll(/\bnw\b(?:\.(\w+)\(([^)]*?)(?:, \(|\)))?/g) ].map(m => m[0]), [ 'nw.load(NETWORK)', 'nw.foreach(NETWORK, \'switch_vlan\', (' ],
+		`"nw" may appear only as nw.load(NETWORK) and nw.foreach(NETWORK, 'switch_vlan', ...)${REWORD}`);
+	assert.equal([ ...src.matchAll(/\bNETWORK\b/g) ].length, 3, 'NETWORK: its definition and the two nw calls');
+	/* of a switch_vlan section, only these options are read */
+	const sws = /^function switches\(\) \{\n[\s\S]*?\n\}$/m.exec(src);
+	assert.ok(sws, 'switches()');
+	const walk = 'nw.foreach(NETWORK, \'switch_vlan\', (s) => {';
+	assert.equal(sws[0].split(walk).length, 2, 'the switch_vlan callback takes its section as s');
+	for (const m of sws[0].replace(walk, '').matchAll(/(?<!\\)\bs\b(\.\w+|\[|\))?/g))
+		assert.ok([ '.device', '.vid', '.vlan', '.ports' ].includes(m[1]), `"${m[0]}": a switch_vlan section is read as s.device, s.vid, s.vlan and s.ports only${REWORD}`);
 
 	/* ubus: one connection for the one call, network.wireless status */
 	assert.deepEqual([ ...src.matchAll(/^.*\bconnect\b.*$/gm) ].map(m => m[0].trim()), [ 'import { connect } from \'ubus\';', 'let reply = connect()?.call(\'network.wireless\', \'status\');' ],
@@ -305,6 +331,15 @@ test('the plugin source rules catch writes, other configs and calls, and names p
 		'wl by reference': add('let w2 = wl;'),
 		'uci by reference': plugin.replace('\tuci.load(CONFIG);\n', '\tuci.load(CONFIG);\n\tlet u = uci; u.set(\'wireless\', \'x\', \'encryption\', \'none\');\n'),
 		'uci on wireless': plugin.replace('\tuci.load(CONFIG);\n', '\tuci.load(WIRELESS);\n'),
+		'nw on wireless': plugin.replace('nw.load(NETWORK)', 'nw.load(WIRELESS)'),
+		'nw walks interfaces': plugin.replace('nw.foreach(NETWORK, \'switch_vlan\'', 'nw.foreach(NETWORK, \'interface\''),
+		'nw writes': plugin.replace('\tif (nw.load(NETWORK))', '\tnw.set(NETWORK, \'lan\', \'proto\', \'none\');\n\tif (nw.load(NETWORK))'),
+		'another switch_vlan option': plugin.replace('let id = s.vid ?? s.vlan;', 'let id = s.vid ?? s.vlan ?? s.password;'),
+		'a whole section passed on': plugin.replace('out[dev] = { name: s.device,', 'out[dev] = { section: s, name: s.device,'),
+		'other file': plugin.replace('readfile(BOARD, BOARD_MAX)', 'readfile(\'/etc/shadow\', BOARD_MAX)'),
+		'shadowed path': plugin.replace('\tlet board = null, known = {}', '\tlet BOARD = \'/etc/shadow\';\n\tlet board = null, known = {}'),
+		'unbounded board read': plugin.replace('readfile(BOARD, BOARD_MAX)', 'readfile(BOARD)'),
+		'shadowed net': plugin.replace('\tlet left = FDB_LIMIT * FDB_ENTRY;', '\tlet left = FDB_LIMIT * FDB_ENTRY;\n\tlet NET = \'/etc\';'),
 		'ubus call in double quotes': add('connect()?.call("uci", "set", {});'),
 		'ubus call on a computed object': add('let o = \'file\'; connect()?.call(o, \'write\', {});'),
 		'process by reference': add('let s = system; s(\'reboot\');'),
