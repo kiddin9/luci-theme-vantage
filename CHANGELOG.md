@@ -23,6 +23,9 @@ Each release ships both packages, `luci-theme-vantage` and
   that port's speed instead of the switch's link to the CPU. Which port
   each device is on stays unknown otherwise. The app's read permission
   gains `luci getSwconfigPortState`.
+- **Dashboard: its stylesheet comes from the browser's cache** until a
+  package changes, versioned the way LuCI versions its scripts, instead
+  of being rechecked with the device on every page load.
 
 ## 1.0.12 - 2026-11-01
 

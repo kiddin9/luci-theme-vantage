@@ -86,8 +86,10 @@
  *   that are a number or an object literal of such values; a style sheet's
  *   replaceSync(x)/insertRule(x) needs constant CSS, or x must be the first
  *   parameter of a .then() callback on a chain that starts with
- *   fetch(L.resource('<literal>')) (a stylesheet shipped with the package;
- *   an options object of literals, such as { cache: 'no-cache' }, may follow).
+ *   fetch(L.resource('<literal>')) (a stylesheet shipped with the package,
+ *   optionally versioned as LuCI versions its scripts: + '?v=' +
+ *   L.env.resource_version; an options object of literals, such as
+ *   { cache: 'no-cache' }, may follow).
  *   Selectors: querySelector/querySelectorAll/closest/matches/
  *   webkitMatchesSelector(sel) need a constant selector or a concatenation
  *   of literals and CSS.escape(...) (this./self.matches, the view's own
@@ -1556,8 +1558,10 @@ function scanUnit(prog, u, report) {
 			flag(i, 'css-style', `${what} \`${text(vs, ve)}\` is not a literal or literal/number concatenation (CSS from data: url() beacons, overlays)${why()}`, [vs]);
 	};
 	/* [s, e) is the first parameter of a .then() callback on a chain that
-	   starts with fetch(L.resource('<literal>')), optionally with an options
-	   object whose values are all literals ({ cache: 'no-cache' }) */
+	   starts with fetch(L.resource('<literal>')), optionally versioned
+	   with + '?v=' + L.env.resource_version (LuCI's own, from its script
+	   tag) and then optionally with an options object whose values are
+	   all literals ({ cache: 'no-cache' }) */
 	const fetchedResource = (i, s, e) => {
 		if (e - s !== 1 || !isId(T[s])) return false;
 		const f = innermostFn(u, i);
@@ -1568,11 +1572,14 @@ function scanUnit(prog, u, report) {
 		const c = chainStart(u, f.start - 3);
 		if (!(isId(T[c], 'fetch') && isP(T[c + 1], '(') && isId(T[c + 2], 'L') && isP(T[c + 3], '.') && isId(T[c + 4], 'resource') &&
 			isP(T[c + 5], '(') && isLit(T[c + 6]) && T[c + 6].t !== 'num' && isP(T[c + 7], ')'))) return false;
-		if (isP(T[c + 8], ')')) return u.match[c + 1] === c + 8;
-		if (!isP(T[c + 8], ',') || !isP(T[c + 9], '{')) return false;
-		const close = u.match[c + 9];
+		let a = c + 8;
+		if (isP(T[a], '+') && T[a + 1] && T[a + 1].t === 'str' && T[a + 1].v === '?v=' && isP(T[a + 2], '+') && isId(T[a + 3], 'L') &&
+			isP(T[a + 4], '.') && isId(T[a + 5], 'env') && isP(T[a + 6], '.') && isId(T[a + 7], 'resource_version')) a += 8;
+		if (isP(T[a], ')')) return u.match[c + 1] === a;
+		if (!isP(T[a], ',') || !isP(T[a + 1], '{')) return false;
+		const close = u.match[a + 1];
 		if (close === undefined) return false;
-		for (let j = c + 10; j < close; j += 4) {
+		for (let j = a + 2; j < close; j += 4) {
 			if (!((isId(T[j]) || (T[j] && T[j].t === 'str')) && isP(T[j + 1], ':') && isLit(T[j + 2]))) return false;
 			if (j + 3 !== close && !isP(T[j + 3], ',')) return false;
 		}

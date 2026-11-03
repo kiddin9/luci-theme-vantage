@@ -156,6 +156,7 @@ function goodCss(el, n, x, sheet) {
 	el.style['--x'] = '1px';
 	Object.assign(el.style, { width: '1px', height: n.toFixed(0) + 'px' });
 	fetch(L.resource('x/app.css')).then(function(r) { return r.text(); }).then(function(text) { sheet.replaceSync(text); });
+	fetch(L.resource('x/app.css') + '?v=' + L.env.resource_version).then(function(r) { return r.text(); }).then(function(text) { sheet.replaceSync(text); });
 	fetch(L.resource('x/app.css'), { cache: 'no-cache', 'credentials': 'same-origin' }).then(function(r) { return r.text(); }).then(function(text) { sheet.replaceSync(text); });
 	sheet.insertRule('.a { color: red }');
 	el.querySelector('div[id="graph"]');

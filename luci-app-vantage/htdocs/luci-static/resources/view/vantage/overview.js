@@ -62,13 +62,13 @@ function hostapd(ifname, method) {
 	return L.resolveDefault(hostapdCalls[key](), null);
 }
 
-/* revalidated on every load (a 304 when unchanged): LuCI versions its own
-   scripts, not this sheet, so after an upgrade a browser could pair the
-   new view with a cached app.css */
+/* versioned as LuCI versions its scripts (LuCI's version and the time
+   packages last changed, from its script tag): kept by the browser until
+   a package changes, so the new view never meets a cached app.css */
 var cssPromise = null;
 function loadCss() {
 	if (cssPromise) return cssPromise;
-	cssPromise = fetch(L.resource('vantage/app.css'), { cache: 'no-cache' }).then(function(r) { return r.ok ? r.text() : ''; }).then(function(text) {
+	cssPromise = fetch(L.resource('vantage/app.css') + '?v=' + L.env.resource_version).then(function(r) { return r.ok ? r.text() : ''; }).then(function(text) {
 		if (!text || !('adoptedStyleSheets' in document) || typeof CSSStyleSheet !== 'function') return;
 		var sheet = new CSSStyleSheet();
 		sheet.replaceSync(text);

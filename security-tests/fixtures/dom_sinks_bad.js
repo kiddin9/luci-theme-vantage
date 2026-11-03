@@ -242,6 +242,10 @@ function badCss(el, x, sheet, doc) {
 	fetch(L.resource('a.css')).then(function(t) { t = x; sheet.replaceSync(t); }); // expect-violation
 	fetch(L.resource('a.css'), { cache: x }).then(function(t) { sheet.replaceSync(t); }); // expect-violation
 	fetch(L.resource('a.css'), opts).then(function(t) { sheet.replaceSync(t); }); // expect-violation
+	fetch(L.resource('a.css') + x).then(function(t) { sheet.replaceSync(t); }); // expect-violation
+	fetch(L.resource('a.css') + '?v=' + x).then(function(t) { sheet.replaceSync(t); }); // expect-violation
+	fetch(L.resource('a.css') + '?v=' + L.env.base_url).then(function(t) { sheet.replaceSync(t); }); // expect-violation
+	fetch(L.resource('a.css') + '/../evil?v=' + L.env.resource_version).then(function(t) { sheet.replaceSync(t); }); // expect-violation
 	fetch(L.resource('a.css'), { cache: 'no-cache' }, x).then(function(t) { sheet.replaceSync(t); }); // expect-violation
 	doc.querySelector('[data-mac="' + x + '"]'); // expect-violation
 	el.closest(x); // expect-violation
