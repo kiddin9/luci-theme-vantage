@@ -420,6 +420,22 @@ test('touch: short row buttons are at least a touch target wide (Processes Kill 
 	assert.match(r.body, /min-width:\s*var\(--ctl-h\)/);
 });
 
+test('File Manager: the app\'s own light palette is repainted on its page only, from tokens', () => {
+	/* luci-app-filemanager injects a <style> of its own (#f9f9f9 status bar,
+	   #f0f0f0 row hover, #ccc rules). On the dark scheme that is a white band
+	   under the theme's light ink; the fix may not leak to other pages that
+	   happen to use the same ids, and it may not hard-code a colour. */
+	const own = themeRules.filter((r) => r.sel.some((s) => /#status-bar/.test(s)));
+	assert.ok(own.length, 'the status bar is repainted');
+	for (const r of own) {
+		for (const s of r.sel)
+			assert.match(s, /^body\[data-page="admin-system-filemanager"\] /, 'scoped to the page: ' + s);
+		assert.doesNotMatch(r.body, /#[0-9a-f]{3,8}\b/i, 'theme tokens, not literals: ' + r.sel.join(','));
+	}
+	/* the row hover is the app's !important fill: the theme takes it back */
+	assert.ok(themeRules.some((r) => r.sel.some((s) => /admin-system-filemanager"\] #file-table tr:hover/.test(s)) && /background:\s*none !important/.test(r.body)));
+});
+
 test('Interfaces: an open device tooltip escapes the scrolling table card (last row was clipped by 43 px)', () => {
 	const r = themeRules.find((x) => !x.media && x.sel.includes(':is(.cbi-section, .cbi-tblsection):has(.ifacebox .cbi-tooltip-container:is(:hover, :focus-within))'));
 	assert.ok(r, 'rule present');
