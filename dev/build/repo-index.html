@@ -151,7 +151,8 @@ section { padding: clamp(56px, 9vw, 104px) 0 0; }
 .feature .copy p { margin-top: 12px; color: var(--text-2); font-size: 17px; }
 .feature .copy ul { margin: 14px 0 0; padding-left: 20px; color: var(--text-2); }
 .feature .copy li + li { margin-top: 4px; }
-.feature figcaption, .pair figcaption { padding: 10px 14px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 13px; }
+.frame video { display: block; width: 100%; height: auto; }
+.frame > figcaption, .feature figcaption, .pair figcaption { padding: 10px 14px; border-top: 1px solid var(--line); color: var(--text-3); font-size: 13px; }
 .pair { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
 .phone { display: grid; gap: clamp(24px, 4vw, 56px); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: center; }
 .phone .frame { max-width: 340px; justify-self: center; border-radius: 22px; }
@@ -286,6 +287,20 @@ footer a { color: var(--text-2); }
 					<p>System fonts and self-drawn icons; nothing loads from the internet, so the UI works offline. Two architecture-independent packages for every target, from signed apk and opkg repositories.</p>
 				</li>
 			</ul>
+		</div>
+	</section>
+
+	<section aria-labelledby="video-h">
+		<div class="wrap">
+			<div class="sec-head">
+				<h2 id="video-h">Vantage in ten seconds</h2>
+			</div>
+			<figure class="frame">
+				<video width="1920" height="1080" controls autoplay muted loop playsinline preload="metadata" poster="screenshots/vantage-promo-poster.png" aria-label="A ten-second tour: the dashboard, a client's details, Ctrl K search, and the switch from dark to light">
+					<source src="screenshots/vantage-promo.mp4" type="video/mp4" media="(prefers-reduced-motion: no-preference)">
+				</video>
+				<figcaption><a href="screenshots/vantage-promo.mp4">Open the video</a> (10 seconds, no sound)</figcaption>
+			</figure>
 		</div>
 	</section>
 
