@@ -53,6 +53,8 @@
 		});
 		return would ? 'relogin' : 'no';
 	})();
+const boardinfo = ubus.call("system", "board");
+const hostname = striptags(boardinfo?.hostname ?? '?');
 -%}
 <!DOCTYPE html>
 <html lang="{{ lang }}" data-darkmode="true" data-vt-look-theme="{{ look_theme }}" data-vt-look-login="{{ look_login }}" data-vt-look-backdrop="{{ look_backdrop }}" data-vt-look-chart="{{ look_chart }}" data-vt-look-layout="{{ look_layout }}" data-vt-look-save="{{ look_save }}">
@@ -73,7 +75,7 @@
 		return ok[0];
 	}
 	var p = look('theme', 'vantage.theme.own', 'vantage.theme', [ 'auto', 'light', 'dark' ]), rail = '';
-	try { rail = localStorage.getItem('vantage.rail') || ''; } catch (e) {}
+	try { rail = localStorage.getItem('vantage.rail') || 'pinned'; } catch (e) {}
 	var dark = (p === 'dark') || (p !== 'light' && !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches));
 	r.setAttribute('data-darkmode', dark ? 'true' : 'false');
 	r.setAttribute('data-theme', p);
