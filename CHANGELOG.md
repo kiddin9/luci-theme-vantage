@@ -6,7 +6,7 @@ Each release ships both packages, `luci-theme-vantage` and
 <https://github.com/anothaDev/luci-theme-vantage/releases> and in the
 [signed repositories](https://anothadev.github.io/luci-theme-vantage/).
 
-## Unreleased
+## 1.0.16 - 2026-11-06
 
 - **Theme: Appearance is saved on the router** (#89,
   [@smallprogram](https://github.com/smallprogram)). The colour mode
