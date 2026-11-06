@@ -24,7 +24,7 @@ and names replaced. The larger access point further down is generated.</sub></p>
 ## What you get
 
 Two packages that work together or alone: the theme doesn't need the
-dashboard, and the dashboard works under any LuCI theme.
+dashboard, and the dashboard on its own works under any LuCI theme.
 
 **The dashboard** (`luci-app-vantage`) is the page you land on after login.
 

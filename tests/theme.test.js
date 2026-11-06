@@ -374,6 +374,11 @@ test('Customize: the theme, the template and the dashboard keep the same chart s
 	}
 	/* the longest tile name still fits */
 	for (const id of layout.TILES) assert.match(`${id}:0:1`, re, id);
+	/* a failed save can be done again: only one under way stops a repeat */
+	assert.match(src, /pending\[name\] === value && !failed\[name\]/);
+	assert.match(src, /'click', \(\) => \{ if \(input\.checked && \(this\.lookFailed \|\| \{\}\)\[look\]\) set\(o\[0\]\)/);
+	/* Esc in the palette stays there: the dashboard would take it as Done */
+	assert.match(src, /case 'Escape': ev\.preventDefault\(\); ev\.stopPropagation\(\); this\.closePalette\(\)/);
 	/* only a login that may save hands it to the router, in one write */
 	assert.match(src, /VIEW_SAVE_EVENT, ev => \{[\s\S]{0,120}this\.lookState\(\) !== 'yes'[\s\S]{0,300}lookWrite\(values\)/);
 });

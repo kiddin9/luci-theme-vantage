@@ -382,7 +382,7 @@ footer a { color: var(--text-2); }
 				<p>CI runs the tests and security checks on every push and pull request, and publishes a release only when its build matches the hashes I committed. The details are in the <a href="https://github.com/anothaDev/luci-theme-vantage#security">README</a> and <a href="https://github.com/anothaDev/luci-theme-vantage/blob/main/SECURITY.md">SECURITY.md</a>.</p>
 			</div>
 			<ul class="trust">
-				<li><strong>Least privilege.</strong> The dashboard's ACL grants exactly the methods it calls. Reverse DNS and device names each sit in a group of their own, and no group grants uci writes.</li>
+				<li><strong>Least privilege.</strong> The dashboard's ACL grants exactly the methods it calls. Reverse DNS and device names each sit in a group of their own, and no dashboard group grants uci writes.</li>
 				<li><strong>No markup from data.</strong> Every element is built with LuCI's <code>E()</code> and text nodes; a check rejects <code>innerHTML</code> and other HTML sinks.</li>
 				<li><strong>Reproducible packages.</strong> The same commit, SDK release and pinned image always give byte-identical packages, checked against the commit's source.</li>
 				<li><strong>Signed repositories.</strong> apk and opkg check the index signature against the project key and each package against its hash.</li>
@@ -420,7 +420,7 @@ opkg-key add /tmp/vantage-24.10.usign.pub
 echo 'src/gz vantage https://anothadev.github.io/luci-theme-vantage/24.10' &gt;&gt; /etc/opkg/customfeeds.conf
 opkg update
 opkg install luci-theme-vantage luci-app-vantage</pre>
-					<p>Translations: <code>opkg install luci-i18n-vantage-&lt;lang&gt;</code> (for example <code>zh-cn</code>).</p>
+					<p>Translations: <code>opkg install luci-i18n-vantage-&lt;lang&gt; luci-i18n-vantage-theme-&lt;lang&gt;</code> (for example <code>zh-cn</code>).</p>
 				</div>
 			</div>
 			<p class="note">Then log out of LuCI and back in; the dashboard is the first page after login. What changed in each release:

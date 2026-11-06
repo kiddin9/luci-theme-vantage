@@ -62,6 +62,8 @@ test('encode and decode: the router\'s form of a layout', () => {
 	for (const junk of [ '', null, undefined, 'x', 'wide', 'wide=', '=hero:0:4', 'tall=hero:0:4', '__proto__=hero:0:4' ])
 		assert.deepEqual(Object.keys(layout.decode(junk)), [], String(junk));
 	assert.deepEqual(layout.normalize(layout.decode('wide=nosuch:0:4').wide, 'wide', false), layout.defaults('wide', false), 'normalize has the last word');
+	assert.equal(layout.encode([ null, 1, 'x', { id: 'hero', c: 0, w: 4 } ]), 'hero:0:4', 'stored junk is skipped');
+	assert.deepEqual(layout.normalize([], 'wide', false), layout.defaults('wide', false), 'an empty layout is the default');
 });
 
 test('merge: the router first for a login that may save, this browser first for any other', () => {

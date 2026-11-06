@@ -33,7 +33,7 @@ port in one click, finding anything by typing — not from their look.
 
 | Package | Contents | Depends |
 |---|---|---|
-| `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page | `+luci-base` |
+| `luci-theme-vantage` | ucode templates, CSS, icons, `menu-vantage.js` (shell: rail, top bar, palette, tabs, indicators), login page, its rpcd ACL (`/etc/config/vantage_theme` only), that config | `+luci-base` |
 | `luci-app-vantage` | dashboard + inspector views under `admin/dashboard` (landing page), its rpcd ACL (reads + its own config only), its rpcd ucode plugin `luci.vantage` (key-free wireless status, temperatures, the bridges' wired hosts, validated alias writes), `/etc/config/vantage` | `+luci-base +rpcd +rpcd-mod-iwinfo +rpcd-mod-ucode +ucode-mod-uci +ucode-mod-ubus +ucode-mod-fs +ucode-mod-rtnl` (rpcd-mod-iwinfo, ucode-mod-fs and ucode-mod-rtnl beyond luci-base; Wi-Fi images already have rtnl, as wifi-scripts needs it); reverse DNS (`rpcd-mod-rrdns`), mDNS (`umdns`) and hostapd's ubus objects are optional and degrade |
 
 The theme is useful alone; the app alone works under any theme but is
@@ -87,8 +87,11 @@ everywhere: theme dir `vantage`, media URL `/luci-static/vantage`, uci
   `vantage.backdrop.v1`, what the dashboard reads under another theme)
   counts until the router has one. The dashboard's chart style and layouts
   go the same way, in options `chart` and `layout_<class>[_wired]`: Done
-  under Customize hands what changed to the theme (`vantage:view-save`),
-  which writes it once; Customize stays open with a note if that fails.
+  under Customize saves what it changed and the router doesn't have yet
+  (`vantage.view.unsaved`, kept across a failed save or a reload; until
+  then this browser's copy stands), by handing it to the theme (`vantage:view-save`), which writes it once. If
+  that fails Customize stays open with a note: Done tries again, and Esc
+  or the Customize button leaves without saving.
   The template passes them on as `data-vt-look-chart` and
   `data-vt-look-layout`, logged in only and in their form only, and
   `vantage.layout` validates them again. The router's come first for a
@@ -223,7 +226,7 @@ text around it so it looks the same size.
 ## 4. App v1 (`luci-app-vantage`)
 
 - **Overview**: device card (model, firmware, uptime, CPU, memory, temp
-  if available), uplink card (resolved uplink interface, address, rate),
+  if available), uplink card (the main line's interface, address, rate),
   radios card (band, channel, width, tx power, utilisation, client count),
   clients card (count by band, weakest signals), health score. The
   Clients tile lists Wi-Fi stations or wired hosts, switched in its head
@@ -282,7 +285,17 @@ text around it so it looks the same size.
   content shrinks keeps its height for 30 s,
   then the layout settles on its own; while arranging, each tile's
   content starts below its handle bar.
-- **Throughput chart**: one row per link (uplink, then each radio), each
+- **Lines to the internet**: every up interface with a default route in
+  the main table is a line, the main one first and at most four beside it.
+  Lines rank by lowest metric; on a tie the kernel's own answer
+  (`luci.vantage routes`) decides, then the name. wan6 on wan's device and
+  IPv6 on the port under PPPoE are part of their line, and so is 6rd, 6in4
+  or 6to4 IPv6 when there's only one line. A softwire (DS-Lite, MAP-E, 464XLAT) carries the line's IPv4. A VPN
+  that holds the route ordinary traffic takes is a full tunnel, drawn as a
+  pipe on the line it leaves by, and is not a line of its own. PPPoE counts
+  on the port under the session, since flow offloading takes downloads past
+  the session's own counters; lines sharing a port keep their own.
+- **Throughput chart**: one row per line, then each radio, each
   with its own scale. Under "Customize", the viewer picks how download and
   upload share a row: overlaid on one scale (the default), overlaid on a
   log scale (a grid line per ×10 from 1 kbit/s to at least 1 Mbit/s),
@@ -290,8 +303,8 @@ text around it so it looks the same size.
   separate lanes. Linear scales never go below 10 kbit/s, so an idle link
   stays flat. Lines are smoothed without overshooting a sample; a stretch
   without samples (page hidden, failed polls) is hatched as "no data".
-  The pick is saved in `localStorage`, validated on read; the tile's size
-  and place don't change with it.
+  The pick is saved with the layout and validated on read; the tile's
+  size and place don't change with it.
 - **Network path background**: behind the path, on its dot grid, one
   canvas in the style picked under the theme's Appearance (or under
   "Customize" when the dashboard runs without the Vantage theme), the
@@ -385,7 +398,7 @@ text around it so it looks the same size.
   changes size. Idle animations (the Live beat, the flow on busy wires)
   use transform and opacity only, so the compositor runs them; with
   reduced motion they stop and busy wires show a static dotted line.
-- ACL: three groups. `luci-app-vantage` (read): `system info/board`,
+- ACL: three groups for the app, and the theme's own, below. `luci-app-vantage` (read): `system info/board`,
   `network.interface dump`, `network.device status`, `iwinfo
   info/assoclist`, `hostapd.* get_status/get_clients`, `luci-rpc
   getHostHints`, `luci.vantage wireless/thermal/wired/routes`, `umdns hosts`, `file read` of
@@ -398,7 +411,8 @@ text around it so it looks the same size.
   apart because its caller chooses the DNS server and port; the view
   checks the grant and skips reverse DNS without it.
   `luci-app-vantage-names` (write): `luci.vantage set_alias` only; no
-  group grants uci writes. The firewall overview's menu entry depends on
+  group of the app grants uci writes. `luci-theme-vantage` (write): uci
+  `set`, `commit` and `revert` on `/etc/config/vantage_theme`. The firewall overview's menu entry depends on
   LuCI's `luci-app-firewall` group, whose holder already reads and
   changes `firewall`; it reads that config with `uci get` (and the
   interfaces with `network.interface dump`, which LuCI's
