@@ -34,6 +34,11 @@ LUCI_MINIFY_CSS:=0
 LUCI_BASENAME:=vantage-theme
 PKG_PO_VERSION:=$(PKG_VERSION)-r$(PKG_RELEASE)
 
+# Appearance for every browser (Appearance under the colour-theme button)
+define Package/luci-theme-vantage/conffiles
+/etc/config/vantage_theme
+endef
+
 define Package/luci-theme-vantage/postrm
 #!/bin/sh
 # opkg (24.10) also runs the old package's postrm on an upgrade, as
