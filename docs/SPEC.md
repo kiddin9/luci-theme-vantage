@@ -244,7 +244,8 @@ text around it so it looks the same size.
   "Port 1"); with one of them linked, its hosts get
   that port's speed instead of the CPU port's. The network
   path adds a Wired branch, a node per port with the port's traffic, for
-  hosts downstream of the device (not those on the uplink's port).
+  hosts downstream of the device (not those on the uplink's port), with
+  or without Wi-Fi.
 - **Inspectors** (drawer or page, deep-linkable):
   client (MAC, host hint, IP, radio/SSID, signal history for the session,
   rates, inactive time), radio (channel, width, noise when real, clients),
