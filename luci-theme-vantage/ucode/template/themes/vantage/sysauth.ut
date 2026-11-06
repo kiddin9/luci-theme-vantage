@@ -17,6 +17,8 @@
 	const look = (opt, ok) => { const v = uci.get('vantage_theme', 'appearance', opt); return (type(v) == 'string' && index(ok, v) >= 0) ? v : ''; };
 	const look_theme = look('theme', [ 'auto', 'light', 'dark' ]);
 	const look_login = look('login', [ 'grid', 'stars', 'none' ]);
+	const boardinfo = ubus.call("system", "board");
+	const hostname = striptags(boardinfo?.hostname ?? '?');
 -%}
 <!DOCTYPE html>
 <html lang="{{ entityencode(dispatcher.lang ?? 'en', true) }}" data-darkmode="true" data-vt-look-theme="{{ look_theme }}" data-vt-look-login="{{ look_login }}">
