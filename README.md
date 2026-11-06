@@ -15,11 +15,11 @@
 <br>
 
 <p align="center">
-  <img src="docs/screenshots/dashboard-dark.png" alt="The Vantage dashboard in dark mode: six health cards with their own icons and edge charts, the signal card flagging a weak client, the network path from the gateway through the access point to its radios and SSIDs, live throughput in download and upload colours, and radio cards" width="100%">
+  <a href="https://anothadev.github.io/luci-theme-vantage/"><img src="docs/screenshots/vantage-promo.webp" alt="A ten-second tour of Vantage: the dark dashboard with live charts and the network path, a client's details, Ctrl K search, and the switch from dark to light" width="100%"></a>
 </p>
 
-<p align="center"><sub>Screenshots use data recorded from a real access point, with addresses
-and names replaced. The larger access point further down is generated.</sub></p>
+<p align="center"><sub>The video and screenshots use recorded data with addresses and names
+replaced. The larger access point further down is generated.</sub></p>
 
 ## What you get
 
@@ -103,6 +103,10 @@ building Vantage into your own firmware, troubleshooting, and a
 ready-made prompt for installing with a coding agent.
 
 ## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/dashboard-dark.png" alt="The Vantage dashboard in dark mode: six health cards with their own icons and edge charts, the signal card flagging a weak client, the network path from the gateway through the access point to its radios and SSIDs, live throughput in download and upload colours, and radio cards" width="100%">
+</p>
 
 <table>
   <tr>
