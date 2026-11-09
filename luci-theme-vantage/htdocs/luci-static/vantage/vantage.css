@@ -14,9 +14,9 @@
 	color-scheme: light;
 
 	--font: system-ui, -apple-system, "Segoe UI", Roboto, Inter, "Helvetica Neue", Arial, sans-serif;
-	--mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+	--mono: ui-monospace, "JetBrains Mono", "SFMono-Regular", "Cascadia Mono", system-ui, Menlo, Consolas, monospace;
 
-	--fs-micro: 10.5px;
+	--fs-micro: 11.5px;
 	--fs-sm: 12px;
 	--fs-base: 13px;
 	--fs-md: 14px;
@@ -50,7 +50,7 @@
 	--r-xl: 12px;
 
 	--rail-w: 56px;
-	--rail-w-pinned: 224px;
+	--rail-w-pinned: 204px;
 	--top-h: 52px;
 	--ctl-h: 36px;              /* every control: inputs, selects, buttons, tabs, chips */
 	--label-w: 180px;           /* form label column */
@@ -427,7 +427,7 @@ html[data-rail="pinned"] .vt-brand-name:not([hidden]) { display: block; }
 	white-space: nowrap;
 }
 .vt-rail-link svg { flex: none; width: 20px; height: 20px; }
-.vt-rail-label { overflow: hidden; text-overflow: ellipsis; display: none; flex: 1 1 auto; }
+.vt-rail-label { overflow: hidden; text-overflow: ellipsis; display: none; flex: 1 1 auto; font-size: var(--fs-md) }
 .vt-rail-caret { display: none; width: 14px; height: 14px; color: var(--text-3); transition: transform .15s; }
 
 .vt-rail-link:hover, .vt-rail-item.is-open > .vt-rail-link { background: var(--s3); color: var(--text); }
@@ -469,7 +469,7 @@ html[data-rail="pinned"] .vt-frame { margin-left: var(--rail-w-pinned); }
 	padding: 5px 10px;
 	border-left: 1px solid var(--line-2);
 	color: var(--text-2);
-	font-size: var(--fs-sm);
+	font-size: var(--fs-base);
 	white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 	text-decoration: none !important;
 }
@@ -635,7 +635,7 @@ a.vt-crumb:hover { color: var(--text); }
 /* where the picks are kept, when not for every browser */
 .vt-appear-note { max-width: 32ch; margin: 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.4; }
 .vt-appear-note[hidden] { display: none; }
-.vt-appear-ver { margin: 0; color: var(--text-3); font-size: var(--fs-micro); }
+.vt-appear-ver { margin: 0; color: var(--text-3); font-size: var(--fs-micro); display:none; }
 .vt-appear-num { font-family: var(--mono); }
 .vt-appear-check { margin: 0; padding: 0; border: 0; background: none; color: var(--accent-text); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 .vt-appear-check[aria-disabled="true"] { color: var(--text-3); cursor: default; text-decoration: none; }
@@ -883,6 +883,12 @@ html[data-vt-alert="err"] #indicators > span[data-indicator="poll-status"][data-
 	border-radius: var(--r-lg);
 	box-shadow: var(--v-shadow);
 	min-width: 0;
+	background-clip: padding-box;
+}
+.cbi-section > legend:first-child{
+    margin-left: 10px !important;
+    padding: 10px !important;
+    border: none !important;
 }
 /* Card padding supplies the space after the final paragraph. */
 .cbi-section > p:last-child { margin-bottom: 0; }
@@ -2621,7 +2627,25 @@ html:not([data-darkmode="true"]) .vt-login-page {
 }
 /* the backdrop (login.js: packets or starfield), between the grid and the card */
 .vt-login-sky { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.vt-login { position: relative; width: min(380px, 100%); }
+.vt-login {
+	position: relative; width: min(380px, 100%);
+	z-index: 1;
+}
+.vt-login-page::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background-image: url('/luci-static/vantage/pattern.svg');
+	background-size: 440px auto;
+	background-position: center;
+	opacity: 0.4;
+}
+html:not([data-darkmode="true"]) .vt-login-page::before {
+	opacity: 0.6;
+}
+#packages {
+ width: 100% !important;
+}
 .vt-login-card {
 	padding: var(--sp-6);
 	background: var(--s1);
@@ -2691,7 +2715,7 @@ body[data-page="admin-statistics-graphs"] p.controls > .nowrap > .cbi-button { m
 .cbi-section-table .ifacebox-body img { width: 18px; height: 18px; }
 [id$="-ifc-description"], .cbi-value-field > div[id$="-ifc-description"] {
 	display: flex; flex-wrap: wrap; align-items: flex-start;
-	gap: 10px 28px;
+	gap: 10px 40px;
 	max-width: 72rem;
 }
 [id$="-ifc-description"] > br { display: none; }
